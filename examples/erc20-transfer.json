@@ -1,0 +1,15 @@
+{
+  "chain": "ethereum",
+  "address": "0xA0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+  "function": "transfer(address,uint256)",
+  "args": [
+    "0x000000000000000000000000000000000000dead",
+    "1000000"
+  ],
+  "caller": "0x0000000000000000000000000000000000000001",
+  "policy": {
+    "allowWrites": true,
+    "simulationRequired": true,
+    "maxValueWei": "0"
+  }
+}
