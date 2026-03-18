@@ -4,10 +4,7 @@
 [![Runtime: Bun](https://img.shields.io/badge/runtime-Bun-black.svg)](https://bun.sh)
 [![Protocol: Agent-native](https://img.shields.io/badge/protocol-agent--native-blue.svg)](#why-this-exists)
 
-`AgentRail` is an agent-native protocol for reading, simulating, and executing EVM contract interactions through structured JSON.
-
-It is not trying to replace great SDKs like `viem`.
-It sits one layer above them.
+`AgentRail` is a protocol layer that lets agents discover, reason about, and execute onchain actions through structured JSON.
 
 The protocol is generic.
 It is designed to work across EVM contracts and DeFi protocols, not just one integration.
@@ -35,16 +32,13 @@ Instead of only offering low-level primitives like `readContract`, it also offer
 
 - `registry.lookup`
 - `token.balance`
-- protocol-specific adapters
+- `protocol-specific adapters`
 - `action.plan`
 - `receipt.decode`
 
-## Why Use This Instead Of Just viem?
+## Why This Is Useful For Agents
 
-`viem` is an excellent SDK.
-`AgentRail` uses the same kinds of low-level capabilities, but optimizes for agent workflows.
-
-Compared with direct SDK usage, this protocol adds:
+Compared with raw contract-call primitives, this protocol adds:
 
 - **ABI flexibility**
   It can use a provided ABI, `abiPath`, explorer/Sourcify discovery, built-in standards, or a minimal function signature plus `returns`.
@@ -66,11 +60,11 @@ Compared with direct SDK usage, this protocol adds:
 
 ## FAQ
 
-### Is this a replacement for viem?
+### How does this fit with existing SDKs and infra?
 
 No.
-`AgentRail` is a protocol layer that can sit on top of SDKs like `viem`.
-It is designed for agent workflows, structured outputs, and safer task-level operations.
+`AgentRail` is a protocol layer that can sit on top of existing SDKs, clients, and RPC infrastructure.
+It is designed for agent workflows, structured outputs, and safer task-level operations rather than replacing lower-level tools.
 
 ### Is this only for Aave?
 
@@ -163,31 +157,13 @@ bun link
 After linking, the CLI is available as `agentrail`.
 The legacy alias `acp` still works for compatibility.
 
-### 2. Configure RPC URLs
+### 2. Configure Access
 
-Copy `.env.example` to `.env`, or set the same variables directly in your shell or deployment environment.
+For many read-only flows, the built-in public RPC defaults are enough to get started.
 
-Common vars:
+If you want custom RPCs, explorer-backed ABI resolution, or transaction signing, configure `.env` from `.env.example` or set the same variables directly in your environment.
 
-- `BNB_RPC_URL`
-- `ETHEREUM_RPC_URL`
-- `BASE_RPC_URL`
-- `ARBITRUM_RPC_URL`
-- `OPTIMISM_RPC_URL`
-- `POLYGON_RPC_URL`
-
-If you want to broadcast transactions:
-
-- `ACP_PRIVATE_KEY`
-
-Optional explorer API keys:
-
-- `BSCSCAN_API_KEY`
-- `ETHERSCAN_API_KEY`
-- `BASESCAN_API_KEY`
-- `ARBISCAN_API_KEY`
-- `OPTIMISTIC_ETHERSCAN_API_KEY`
-- `POLYGONSCAN_API_KEY`
+For the full environment variable reference, see [docs/configuration.md](./docs/configuration.md).
 
 ### 3. Ask The Protocol What It Supports
 
@@ -239,23 +215,9 @@ The repo currently includes Aave as one concrete higher-level adapter example:
 agentrail call positions --json '{"chain":"bnb","owner":"0x5f0599dade40b691caaf156ec7dc6121833d58bb"}'
 ```
 
-## Case Study: Aave V3 Positions On BNB
+## Case Study: Aave On BNB
 
-`AgentRail` currently includes a built-in registry for known Aave BNB market entries.
-
-That lets an agent do:
-
-1. `registry.lookup` to find a market or aToken
-2. `aave.positions` to scan tracked markets
-3. read `summary` or `highlights` instead of parsing the full response
-
-Example:
-
-```bash
-agentrail call positions --json '{"chain":"bnb","owner":"0x5f0599dade40b691caaf156ec7dc6121833d58bb"}'
-```
-
-Smaller result for agents:
+One built-in adapter example today is reading Aave supplied positions on BNB:
 
 ```bash
 agentrail call positions --json '{"chain":"bnb","owner":"0x5f0599dade40b691caaf156ec7dc6121833d58bb"}' --filter-output result.summary,result.highlights
@@ -263,73 +225,19 @@ agentrail call positions --json '{"chain":"bnb","owner":"0x5f0599dade40b691caaf1
 
 ## Protocol Mode
 
-You can run `AgentRail` as a long-lived stdio process:
+`AgentRail` can also run as a long-lived stdio JSON server for agent runtimes and orchestration systems.
 
 ```bash
 agentrail serve
 ```
 
-Every request is one JSON line.
-Every response is one JSON line.
-
-Discovery:
+Minimal discovery request:
 
 ```json
 {"id":"1","method":"rpc.discover","params":{}}
 ```
 
-Protocol-level output filtering:
-
-```json
-{
-  "id":"2",
-  "method":"aave.positions",
-  "params":{
-    "chain":"bnb",
-    "owner":"0x5f0599dade40b691caaf156ec7dc6121833d58bb"
-  },
-  "output":{
-    "paths":["result.summary","result.highlights"]
-  }
-}
-```
-
-Reusable compact view:
-
-```json
-{
-  "id":"3",
-  "method":"aave.positions",
-  "params":{
-    "chain":"bnb",
-    "owner":"0x5f0599dade40b691caaf156ec7dc6121833d58bb"
-  },
-  "output":{
-    "view":"highlights-only",
-    "limit":1
-  }
-}
-```
-
-## Output Shaping
-
-CLI-level:
-
-```bash
---filter-output result.summary,result.highlights
-```
-
-Protocol-level:
-
-- `output.paths`
-- `output.view`
-- `output.limit`
-
-Supported views today:
-
-- `summary-only`
-- `highlights-only`
-- `non-zero-only`
+For protocol-level filtering, compact views, and more detailed server examples, see [docs/protocol-mode.md](./docs/protocol-mode.md).
 
 ## Safety Model
 
@@ -363,11 +271,11 @@ Write paths are designed to be more agent-safe than raw SDK usage:
 
 `AgentRail` is strongest today for:
 
-- token balance reads
-- protocol address lookup
-- Aave BNB supply position reads
 - contract inspection and simulation
+- generic contract reads and token balance queries
 - transaction build/send/decode flows
+- protocol address lookup
+- Aave BNB supply position reads as a current built-in adapter example
 
 ## Development
 
