@@ -1,5 +1,6 @@
 import { parseAbi, type Abi } from "viem";
 import { getChainConfig } from "./config";
+import { getEnv } from "./env";
 import { AcpError } from "./errors";
 import { STANDARD_ABIS } from "./standards";
 import type { FunctionStateMutability, SupportedChain } from "./types";
@@ -143,8 +144,9 @@ async function fetchExplorerAbi(chain: SupportedChain, address: string): Promise
   url.searchParams.set("module", "contract");
   url.searchParams.set("action", "getabi");
   url.searchParams.set("address", address);
-  if (config.apiKeyEnvVar && Bun.env[config.apiKeyEnvVar]) {
-    url.searchParams.set("apikey", Bun.env[config.apiKeyEnvVar]!);
+  const apiKey = config.apiKeyEnvVar ? getEnv(config.apiKeyEnvVar) : undefined;
+  if (apiKey) {
+    url.searchParams.set("apikey", apiKey);
   }
 
   try {

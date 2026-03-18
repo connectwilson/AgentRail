@@ -2,18 +2,38 @@
   "name": "agentrail",
   "version": "0.1.0",
   "private": false,
+  "description": "Agent-native protocol for reading, simulating, and executing EVM contract interactions with structured JSON.",
   "license": "MIT",
   "type": "module",
+  "main": "./dist/index.js",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "README.md",
+    "LICENSE",
+    "CONTRIBUTING.md",
+    "ROADMAP.md",
+    "SECURITY.md"
+  ],
   "bin": {
-    "agentrail": "./src/index.ts",
-    "acp": "./src/index.ts"
+    "agentrail": "./bin/agentrail.js",
+    "acp": "./bin/agentrail.js"
   },
   "scripts": {
+    "build": "mkdir -p dist && ~/.bun/bin/bun build ./src/index.ts --target=node --format=esm --outfile ./dist/index.js && ~/.bun/bin/bun build ./src/live-verify.ts --target=node --format=esm --outfile ./dist/live-verify.js",
     "dev": "bun run src/index.ts",
-    "start": "bun run src/index.ts",
+    "start": "node ./dist/index.js",
     "verify:live": "bun run src/live-verify.ts",
+    "verify:live:node": "node ./dist/live-verify.js",
+    "prepack": "npm run build",
     "test": "bun test",
-    "typecheck": "bunx tsc --noEmit"
+    "typecheck": "bunx tsc --noEmit -p tsconfig.build.json"
+  },
+  "engines": {
+    "node": ">=18"
   },
   "dependencies": {
     "viem": "^2.39.0"

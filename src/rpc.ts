@@ -20,6 +20,7 @@ import {
 import type { SupportedChain } from "./types";
 import { getRpcUrl } from "./config";
 import { AcpError } from "./errors";
+import { getEnv } from "./env";
 
 const chainMap = {
   local: defineChain({
@@ -55,7 +56,10 @@ export function getPublicClient(chain: SupportedChain) {
 }
 
 export function getWalletClient(chain: SupportedChain, privateKey?: `0x${string}`) {
-  const key = privateKey ?? (Bun.env.ACP_PRIVATE_KEY as `0x${string}` | undefined) ?? (Bun.env.PRIVATE_KEY as `0x${string}` | undefined);
+  const key =
+    privateKey ??
+    (getEnv("ACP_PRIVATE_KEY") as `0x${string}` | undefined) ??
+    (getEnv("PRIVATE_KEY") as `0x${string}` | undefined);
   if (!key) {
     throw new AcpError(
       "SIGNER_MISSING",

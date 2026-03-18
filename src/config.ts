@@ -1,4 +1,5 @@
 import type { SupportedChain } from "./types";
+import { getEnv } from "./env";
 
 const CHAIN_CONFIG = {
   local: {
@@ -46,6 +47,6 @@ export function getChainConfig(chain: SupportedChain) {
 }
 
 export function getRpcUrl(chain: SupportedChain) {
-  const value = Bun.env[getChainConfig(chain).envVar];
+  const value = getEnv(getChainConfig(chain).envVar);
   return value ?? getChainConfig(chain).defaultRpcUrl;
 }

@@ -9,6 +9,10 @@
 It is not trying to replace great SDKs like `viem`.
 It sits one layer above them.
 
+The protocol is generic.
+It is designed to work across EVM contracts and DeFi protocols, not just one integration.
+Aave-specific methods in this repo are examples of higher-level adapters built on top of the same core protocol surface.
+
 The goal is simple:
 
 - make onchain actions easier for agents to discover
@@ -31,7 +35,7 @@ Instead of only offering low-level primitives like `readContract`, it also offer
 
 - `registry.lookup`
 - `token.balance`
-- `aave.positions`
+- protocol-specific adapters
 - `action.plan`
 - `receipt.decode`
 
@@ -46,7 +50,7 @@ Compared with direct SDK usage, this protocol adds:
   It can use a provided ABI, `abiPath`, explorer/Sourcify discovery, built-in standards, or a minimal function signature plus `returns`.
 
 - **Higher-level methods**
-  Agents can ask for `token.balance` or `aave.positions` instead of stitching together multiple raw reads.
+  Agents can ask for `token.balance`, protocol adapters, or planning methods instead of stitching together multiple raw reads.
 
 - **Safer write flows**
   `simulate-first`, signer guards, policy checks, and explicit error advice are built into the protocol surface.
@@ -71,7 +75,8 @@ It is designed for agent workflows, structured outputs, and safer task-level ope
 ### Is this only for Aave?
 
 No.
-Aave is the first high-level protocol integration in the repo today, but the protocol also supports generic contract reads, simulation, transaction building, sending, and receipt decoding.
+Aave is the first high-level adapter in the repo today, but the protocol itself is generic.
+It already supports generic contract reads, simulation, transaction building, sending, and receipt decoding for arbitrary EVM contracts.
 
 ### Do I need a full ABI for every read?
 
@@ -86,7 +91,13 @@ You should still use dedicated wallets, limits, and allowlists in real deploymen
 
 ## What It Can Do
 
-Low-level methods:
+At a high level, AgentRail gives agents three layers of capability:
+
+- generic contract access
+- safer transaction execution
+- optional protocol-specific adapters for common workflows
+
+Core contract methods:
 
 - `contract.inspect`
 - `contract.functions`
@@ -98,12 +109,15 @@ Low-level methods:
 - `tx.send`
 - `receipt.decode`
 
-Higher-level methods:
+Built-in higher-level methods and adapters today:
 
 - `registry.lookup`
 - `token.balance`
 - `aave.positions`
 - `action.plan`
+
+`aave.positions` is an example adapter, not the boundary of the protocol.
+AgentRail's core contract methods are intended to work across any EVM-based DeFi protocol as long as the contract is reachable and the ABI can be provided or discovered.
 
 ## Agent-Friendly Features
 
@@ -126,18 +140,32 @@ Higher-level methods:
 
 ### 1. Install
 
+From npm:
+
 ```bash
-cd /Users/wilson/Documents/AgentRail
+npm install -g agentrail
+```
+
+Run without global install:
+
+```bash
+npx agentrail --llms
+```
+
+From local source:
+
+```bash
+cd /path/to/AgentRail
 bun install
 bun link
 ```
 
 After linking, the CLI is available as `agentrail`.
-The legacy alias `acp` also still works.
+The legacy alias `acp` still works for compatibility.
 
 ### 2. Configure RPC URLs
 
-Copy `.env.example` to `.env`.
+Copy `.env.example` to `.env`, or set the same variables directly in your shell or deployment environment.
 
 Common vars:
 
@@ -172,7 +200,7 @@ agentrail --llms
 Method schema:
 
 ```bash
-agentrail schema aave.positions
+agentrail schema contract.read
 ```
 
 ### 4. Run A Simple Read
@@ -183,9 +211,9 @@ Minimal signature mode, no full ABI required:
 agentrail call read --json '{"chain":"bnb","address":"0x9B00a09492a626678E5A3009982191586C444Df9","function":"balanceOf(address)","args":["0x5f0599dade40b691caaf156ec7dc6121833d58bb"],"returns":["uint256"],"decimals":18}'
 ```
 
-### 5. Use A Higher-Level Method
+### 5. Use A Generic Protocol Flow
 
-Look up the known Aave BNB WBNB market:
+Look up a known registry entry:
 
 ```bash
 agentrail call lookup --json '{"chain":"bnb","protocol":"aave","symbol":"WBNB"}'
@@ -197,17 +225,25 @@ Read a token balance with formatting:
 agentrail call tokenBalance --json '{"chain":"bnb","token":"0x9B00a09492a626678E5A3009982191586C444Df9","owner":"0x5f0599dade40b691caaf156ec7dc6121833d58bb"}'
 ```
 
-Read Aave positions:
+Simulate an arbitrary DeFi contract call:
+
+```bash
+agentrail call simulate --json '{"chain":"bnb","address":"0xYourContract","function":"deposit(uint256,address)","args":["1000000000000000000","0xYourWallet"],"stateMutability":"nonpayable","caller":"0xYourWallet","policy":{"allowWrites":true,"simulationRequired":true}}'
+```
+
+### 6. Use A Built-In Protocol Adapter Example
+
+The repo currently includes Aave as one concrete higher-level adapter example:
 
 ```bash
 agentrail call positions --json '{"chain":"bnb","owner":"0x5f0599dade40b691caaf156ec7dc6121833d58bb"}'
 ```
 
-## Real Example: Aave V3 Positions On BNB
+## Case Study: Aave V3 Positions On BNB
 
-`AgentRail` includes a built-in registry for known Aave BNB market entries.
+`AgentRail` currently includes a built-in registry for known Aave BNB market entries.
 
-This means an agent can do:
+That lets an agent do:
 
 1. `registry.lookup` to find a market or aToken
 2. `aave.positions` to scan tracked markets
@@ -351,6 +387,12 @@ Live verification script:
 
 ```bash
 bun run verify:live
+```
+
+Build npm distributable files:
+
+```bash
+npm run build
 ```
 
 ## Open Source
