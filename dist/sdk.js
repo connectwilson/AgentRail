@@ -1,4 +1,3 @@
-import { createRequire } from "node:module";
 var __defProp = Object.defineProperty;
 var __returnValue = (v) => v;
 function __exportSetter(name, newValue) {
@@ -14,7 +13,6 @@ var __export = (target, all) => {
     });
 };
 var __esm = (fn, res) => () => (fn && (res = fn(fn = 0)), res);
-var __require = /* @__PURE__ */ createRequire(import.meta.url);
 
 // node_modules/abitype/dist/esm/version.js
 var version = "1.2.3";
@@ -8914,277 +8912,6 @@ var init_secp256k1 = __esm(() => {
   encodeToCurve = /* @__PURE__ */ (() => secp256k1_hasher.encodeToCurve)();
 });
 
-// src/errors.ts
-class AcpError extends Error {
-  code;
-  data;
-  constructor(code, message, data) {
-    super(message);
-    this.code = code;
-    this.data = data;
-  }
-}
-function getErrorAdvice(error) {
-  switch (error.code) {
-    case "ABI_REQUIRED":
-      return {
-        retryable: true,
-        likelyCauses: ["The target contract ABI could not be discovered automatically."],
-        suggestedNextActions: [
-          "Provide abi or abiPath explicitly.",
-          "Provide function plus returns for simple read calls.",
-          "Use registry.lookup if you need a known protocol contract address first."
-        ]
-      };
-    case "FUNCTION_NOT_FOUND":
-      return {
-        retryable: true,
-        likelyCauses: ["The requested function signature does not match the resolved ABI."],
-        suggestedNextActions: [
-          "Double-check the function signature and parameter types.",
-          "Inspect the contract first with contract.functions."
-        ]
-      };
-    case "WRITE_BLOCKED":
-      return {
-        retryable: true,
-        likelyCauses: ["The request attempted a write while policy.allowWrites is false."],
-        suggestedNextActions: [
-          "Set policy.allowWrites=true for write flows.",
-          "Run contract.simulate before tx.send."
-        ]
-      };
-    case "CALLER_REQUIRED":
-      return {
-        retryable: true,
-        likelyCauses: ["The method requires a caller address for write simulation or transaction building."],
-        suggestedNextActions: [
-          "Provide caller in the request.",
-          "Ensure caller matches the signer for tx.send."
-        ]
-      };
-    case "SIGNER_MISSING":
-      return {
-        retryable: true,
-        likelyCauses: ["No private key was configured for tx.send."],
-        suggestedNextActions: [
-          "Set ACP_PRIVATE_KEY or PRIVATE_KEY in the environment.",
-          "Use tx.build instead if you only need an unsigned transaction."
-        ]
-      };
-    case "SIMULATION_FAILED":
-      return {
-        retryable: true,
-        likelyCauses: [
-          "The transaction would revert with the provided parameters.",
-          "The caller may lack balance, allowance, or required permissions."
-        ],
-        suggestedNextActions: [
-          "Inspect the revert reason in error.data.reason.",
-          "Check balances, allowances, deadlines, and protocol preconditions."
-        ]
-      };
-    case "TX_SEND_FAILED":
-      return {
-        retryable: true,
-        likelyCauses: [
-          "Transaction signing or broadcast failed.",
-          "The network or signer configuration may be invalid."
-        ],
-        suggestedNextActions: [
-          "Verify signer configuration and RPC connectivity.",
-          "Try tx.build or contract.simulate to isolate the issue."
-        ]
-      };
-    case "INVALID_ADDRESS":
-      return {
-        retryable: false,
-        likelyCauses: ["The provided address is not a valid EVM address."],
-        suggestedNextActions: ["Provide a checksummed or lowercase 0x-prefixed 20-byte address."]
-      };
-    default:
-      return {
-        retryable: true,
-        likelyCauses: ["The request failed inside the protocol runtime or downstream RPC."],
-        suggestedNextActions: [
-          "Check the error message and data fields.",
-          "Retry with explicit ABI and simpler parameters if possible."
-        ]
-      };
-  }
-}
-function asError(error) {
-  if (error instanceof AcpError) {
-    return error;
-  }
-  if (error instanceof Error) {
-    return new AcpError("INTERNAL_ERROR", error.message);
-  }
-  return new AcpError("INTERNAL_ERROR", "Unknown error", error);
-}
-
-// src/manifest.ts
-var METHOD_MANIFEST = {
-  "registry.lookup": {
-    description: "Look up known protocol, market, token, or contract addresses from the built-in registry. Covers Aave V3 (all chains), Uniswap V3, Compound V3, Lido, Curve, and major tokens on Ethereum/BNB/Base/Arbitrum/Optimism/Polygon.",
-    params: {
-      chain: "optional chain id label such as bnb, ethereum, base, arbitrum, optimism, or polygon",
-      protocol: "optional protocol name such as aave, uniswap, compound, lido, curve",
-      category: "optional category: token | protocol | market | contract",
-      symbol: "optional symbol filter such as WBNB or USDC",
-      name: "optional partial name filter",
-      query: "optional free-text search"
-    },
-    returns: {
-      entries: "list of matching registry entries",
-      bestMatch: "best matching registry entry when available",
-      summary: "human-readable summary"
-    }
-  },
-  "registry.add": {
-    description: "Dynamically add entries to the in-process registry at runtime. Entries persist for the lifetime of the server session. Use this to register project-specific contracts, custom tokens, or protocols not in the built-in registry.",
-    params: {
-      entries: "array of registry entries, each with chain, protocol, category, name, and optional symbol/address/metadata"
-    },
-    returns: {
-      added: "number of entries added",
-      entries: "the added entries",
-      summary: "human-readable confirmation"
-    }
-  },
-  "token.balance": {
-    description: "Read a token balance for an owner with automatic symbol/decimals enrichment and human-readable formatted value.",
-    params: {
-      chain: "target chain",
-      token: "token contract address",
-      owner: "wallet address to inspect",
-      symbol: "optional symbol override",
-      decimals: "optional decimals override",
-      abi: "optional ABI override",
-      abiPath: "optional ABI file path"
-    },
-    returns: {
-      raw: "raw integer token balance",
-      formatted: "human-readable value if decimals are known",
-      symbol: "resolved token symbol"
-    }
-  },
-  "aave.positions": {
-    description: "Read Aave V3 supplied balances for an owner across all known markets on the target chain. Supports Ethereum, BNB, Base, Arbitrum, Optimism, and Polygon.",
-    params: {
-      chain: "target chain",
-      owner: "wallet address to inspect",
-      assets: "optional explicit asset list to override registry defaults"
-    },
-    returns: {
-      highlights: "non-zero supplied positions only",
-      summary: "human-readable summary",
-      positions: "all tracked positions",
-      nonZeroPositions: "only positions with nonzero balance"
-    }
-  },
-  "compound.positions": {
-    description: "Read Compound V3 (Comet) supply and borrow positions for an owner across all known markets on the chain.",
-    params: {
-      chain: "target chain (ethereum, base, arbitrum, polygon supported)",
-      owner: "wallet address to inspect",
-      markets: "optional explicit market list to override registry defaults"
-    },
-    returns: {
-      positions: "per-market supply and borrow positions",
-      activePositions: "only markets with nonzero supply or borrow",
-      summary: "human-readable summary"
-    }
-  },
-  "uniswap.quote": {
-    description: "Get a Uniswap V3 exact-input swap quote using the on-chain QuoterV2. Returns amountOut, formatted values, and gas estimate.",
-    params: {
-      chain: "target chain (ethereum, arbitrum, base, optimism, polygon supported)",
-      tokenIn: "input token address",
-      tokenOut: "output token address",
-      amountIn: "input amount as raw integer string (wei)",
-      feeTier: "optional fee tier in bps: 100 | 500 | 3000 | 10000 (default 3000)",
-      quoterAddress: "optional QuoterV2 address override"
-    },
-    returns: {
-      amountOut: "raw output amount",
-      amountOutFormatted: "formatted output amount if decimals resolvable",
-      gasEstimate: "estimated gas for the swap",
-      summary: "human-readable quote summary"
-    }
-  },
-  "action.plan": {
-    description: "Return a lightweight step-by-step plan for a common onchain goal expressed in natural language.",
-    params: {
-      chain: "target chain",
-      goal: "natural language goal e.g. 'read my Aave positions' or 'deposit USDC to Aave'",
-      protocol: "optional protocol hint",
-      target: "optional contract or target hint",
-      owner: "optional owner address",
-      asset: "optional asset symbol",
-      amount: "optional amount"
-    },
-    returns: {
-      steps: "ordered plan steps with suggested methods"
-    }
-  },
-  "contract.inspect": {
-    description: "Inspect a contract for bytecode, proxy implementation (EIP-1967), detected standards (ERC20/ERC721/ERC1155/ERC4626), and ABI source.",
-    params: {
-      chain: "target chain",
-      address: "contract address",
-      abi: "optional ABI override",
-      abiPath: "optional ABI path"
-    }
-  },
-  "contract.functions": {
-    description: "List all callable functions from the resolved ABI with risk levels."
-  },
-  "contract.describe": {
-    description: "Describe a specific function: its inputs with semantic types, outputs, risk level, and preconditions."
-  },
-  "contract.read": {
-    description: "Read a contract function using full ABI, auto-resolved ABI (Sourcify/Explorer), built-in standards, or minimal function signature + returns.",
-    params: {
-      chain: "target chain",
-      address: "contract address",
-      function: "function signature such as balanceOf(address)",
-      args: "optional argument array",
-      returns: "optional return type array for minimal ABI mode e.g. ['uint256']",
-      decimals: "optional decimals for formatted token output"
-    }
-  },
-  "batch.read": {
-    description: "Run multiple contract.read calls in parallel in a single request."
-  },
-  "contract.simulate": {
-    description: "Simulate a write contract call with policy enforcement. Safe — does not submit to chain. Returns gas estimate and simulation result."
-  },
-  "tx.build": {
-    description: "Build an unsigned EIP-1559 transaction payload with gas estimation and fee estimation."
-  },
-  "tx.send": {
-    description: "Sign and broadcast a transaction using the configured signer (ACP_PRIVATE_KEY env var) with policy enforcement and nonce management."
-  },
-  "receipt.decode": {
-    description: "Decode a transaction receipt: parse event logs, summarize token transfers and approvals, return structured effects."
-  }
-};
-function getLlmManifest() {
-  return {
-    name: "AgentRail",
-    version: "0.2.0",
-    description: "Agent-native onchain protocol for EVM contract discovery, reads, simulations, execution, and result decoding. Supports Aave V3, Compound V3, Uniswap V3, Lido, Curve, and all major tokens across 6 chains.",
-    transport: ["stdio-jsonl", "http"],
-    chains: ["ethereum", "bnb", "base", "arbitrum", "optimism", "polygon", "local"],
-    sdks: ["typescript", "openai-tools", "langchain-tools"],
-    methods: METHOD_MANIFEST
-  };
-}
-function getMethodSchema(method) {
-  return METHOD_MANIFEST[method] ?? null;
-}
-
 // node_modules/viem/_esm/index.js
 init_exports();
 // node_modules/viem/_esm/utils/uid.js
@@ -17453,6 +17180,106 @@ function getRpcUrl(chain) {
   return value ?? getChainConfig(chain).defaultRpcUrl;
 }
 
+// src/errors.ts
+class AcpError extends Error {
+  code;
+  data;
+  constructor(code, message, data) {
+    super(message);
+    this.code = code;
+    this.data = data;
+  }
+}
+function getErrorAdvice(error) {
+  switch (error.code) {
+    case "ABI_REQUIRED":
+      return {
+        retryable: true,
+        likelyCauses: ["The target contract ABI could not be discovered automatically."],
+        suggestedNextActions: [
+          "Provide abi or abiPath explicitly.",
+          "Provide function plus returns for simple read calls.",
+          "Use registry.lookup if you need a known protocol contract address first."
+        ]
+      };
+    case "FUNCTION_NOT_FOUND":
+      return {
+        retryable: true,
+        likelyCauses: ["The requested function signature does not match the resolved ABI."],
+        suggestedNextActions: [
+          "Double-check the function signature and parameter types.",
+          "Inspect the contract first with contract.functions."
+        ]
+      };
+    case "WRITE_BLOCKED":
+      return {
+        retryable: true,
+        likelyCauses: ["The request attempted a write while policy.allowWrites is false."],
+        suggestedNextActions: [
+          "Set policy.allowWrites=true for write flows.",
+          "Run contract.simulate before tx.send."
+        ]
+      };
+    case "CALLER_REQUIRED":
+      return {
+        retryable: true,
+        likelyCauses: ["The method requires a caller address for write simulation or transaction building."],
+        suggestedNextActions: [
+          "Provide caller in the request.",
+          "Ensure caller matches the signer for tx.send."
+        ]
+      };
+    case "SIGNER_MISSING":
+      return {
+        retryable: true,
+        likelyCauses: ["No private key was configured for tx.send."],
+        suggestedNextActions: [
+          "Set ACP_PRIVATE_KEY or PRIVATE_KEY in the environment.",
+          "Use tx.build instead if you only need an unsigned transaction."
+        ]
+      };
+    case "SIMULATION_FAILED":
+      return {
+        retryable: true,
+        likelyCauses: [
+          "The transaction would revert with the provided parameters.",
+          "The caller may lack balance, allowance, or required permissions."
+        ],
+        suggestedNextActions: [
+          "Inspect the revert reason in error.data.reason.",
+          "Check balances, allowances, deadlines, and protocol preconditions."
+        ]
+      };
+    case "TX_SEND_FAILED":
+      return {
+        retryable: true,
+        likelyCauses: [
+          "Transaction signing or broadcast failed.",
+          "The network or signer configuration may be invalid."
+        ],
+        suggestedNextActions: [
+          "Verify signer configuration and RPC connectivity.",
+          "Try tx.build or contract.simulate to isolate the issue."
+        ]
+      };
+    case "INVALID_ADDRESS":
+      return {
+        retryable: false,
+        likelyCauses: ["The provided address is not a valid EVM address."],
+        suggestedNextActions: ["Provide a checksummed or lowercase 0x-prefixed 20-byte address."]
+      };
+    default:
+      return {
+        retryable: true,
+        likelyCauses: ["The request failed inside the protocol runtime or downstream RPC."],
+        suggestedNextActions: [
+          "Check the error message and data fields.",
+          "Retry with explicit ABI and simpler parameters if possible."
+        ]
+      };
+  }
+}
+
 // src/standards.ts
 var ERC20_ABI = [
   {
@@ -18098,9 +17925,6 @@ function assertWriteAllowed(params) {
 // src/registry.ts
 import { readFileSync, existsSync as existsSync2 } from "node:fs";
 var _registryEntries = [];
-function addRegistryEntries(entries) {
-  _registryEntries.push(...entries);
-}
 var REGISTRY = new Proxy(_registryEntries, {
   get(target, prop) {
     return target[prop];
@@ -20560,553 +20384,81 @@ async function uniswapQuote(params) {
     });
   }
 }
-async function registryAdd(params) {
-  if (!Array.isArray(params.entries) || params.entries.length === 0) {
-    throw new AcpError("INVALID_PARAMS", "registry.add requires a non-empty entries array.");
-  }
-  for (const entry of params.entries) {
-    if (!entry.chain || !entry.protocol || !entry.category || !entry.name) {
-      throw new AcpError("INVALID_ENTRY", "Each registry entry must have chain, protocol, category, and name.", { entry });
-    }
-  }
-  addRegistryEntries(params.entries);
-  logger.info("registry.add", { count: params.entries.length });
-  return {
-    id: crypto.randomUUID(),
-    ok: true,
-    result: {
-      added: params.entries.length,
-      entries: params.entries,
-      summary: `Added ${params.entries.length} entr${params.entries.length === 1 ? "y" : "ies"} to the registry.`
-    },
-    meta: { timestamp: new Date().toISOString() }
-  };
-}
-var methodHandlers = {
-  "registry.lookup": registryLookup,
-  "registry.add": registryAdd,
-  "token.balance": tokenBalance,
-  "aave.positions": aavePositions,
-  "compound.positions": compoundPositions,
-  "uniswap.quote": uniswapQuote,
-  "action.plan": actionPlan,
-  "contract.inspect": contractInspect,
-  "contract.functions": contractFunctions,
-  "contract.describe": contractDescribe,
-  "contract.read": contractRead,
-  "batch.read": batchRead,
-  "contract.simulate": contractSimulate,
-  "tx.build": txBuild,
-  "tx.send": txSend,
-  "receipt.decode": receiptDecode
-};
 
-// src/index.ts
-import { createInterface } from "node:readline";
-
-// src/http-server.ts
-import { createServer } from "node:http";
-var METHOD_ALIASES = {
-  registry: "registry.lookup",
-  lookup: "registry.lookup",
-  tokenBalance: "token.balance",
-  positions: "aave.positions",
-  aavePositions: "aave.positions",
-  compoundPositions: "compound.positions",
-  quote: "uniswap.quote",
-  uniswapQuote: "uniswap.quote",
-  plan: "action.plan",
-  inspect: "contract.inspect",
-  functions: "contract.functions",
-  describe: "contract.describe",
-  read: "contract.read",
-  batch: "batch.read",
-  batchRead: "batch.read",
-  simulate: "contract.simulate",
-  build: "tx.build",
-  send: "tx.send",
-  decode: "receipt.decode",
-  decodeReceipt: "receipt.decode"
+// src/sdk.ts
+class AgentRail {
+  inspect(params) {
+    return contractInspect(params);
+  }
+  functions(params) {
+    return contractFunctions(params);
+  }
+  describe(params) {
+    return contractDescribe(params);
+  }
+  read(params) {
+    return contractRead(params);
+  }
+  batchRead(params) {
+    return batchRead(params);
+  }
+  simulate(params) {
+    return contractSimulate(params);
+  }
+  buildTx(params) {
+    return txBuild(params);
+  }
+  sendTx(params) {
+    return txSend(params);
+  }
+  decodeReceipt(params) {
+    return receiptDecode(params);
+  }
+  registryLookup(params) {
+    return registryLookup(params);
+  }
+  tokenBalance(params) {
+    return tokenBalance(params);
+  }
+  aavePositions(params) {
+    return aavePositions(params);
+  }
+  compoundPositions(params) {
+    return compoundPositions(params);
+  }
+  uniswapQuote(params) {
+    return uniswapQuote(params);
+  }
+  actionPlan(params) {
+    return actionPlan(params);
+  }
+}
+var agentRail = new AgentRail;
+export {
+  uniswapQuote,
+  txSend,
+  txBuild,
+  tokenBalance,
+  registryLookup,
+  receiptDecode,
+  nonceManager4 as nonceManager,
+  lookupRegistry,
+  logger,
+  getErrorAdvice,
+  getCompoundMarkets,
+  getAaveMarketEntries,
+  contractSimulate,
+  contractRead,
+  contractInspect,
+  contractFunctions,
+  contractDescribe,
+  compoundPositions,
+  batchRead,
+  agentRail,
+  actionPlan,
+  abiNegativeCache,
+  abiCache,
+  aavePositions,
+  AgentRail,
+  AcpError
 };
-var RATE_LIMIT_WINDOW_MS = 60000;
-var RATE_LIMIT_MAX = 120;
-var ipRequestCounts = new Map;
-function checkRateLimit(ip) {
-  const now = Date.now();
-  const entry = ipRequestCounts.get(ip);
-  if (!entry || now - entry.windowStart > RATE_LIMIT_WINDOW_MS) {
-    ipRequestCounts.set(ip, { count: 1, windowStart: now });
-    return true;
-  }
-  if (entry.count >= RATE_LIMIT_MAX) {
-    return false;
-  }
-  entry.count++;
-  return true;
-}
-function getClientIp(req) {
-  const forwarded = req.headers["x-forwarded-for"];
-  if (typeof forwarded === "string")
-    return forwarded.split(",")[0]?.trim() ?? "unknown";
-  return req.socket?.remoteAddress ?? "unknown";
-}
-function setCommonHeaders(res) {
-  res.setHeader("Content-Type", "application/json");
-  res.setHeader("Access-Control-Allow-Origin", process.env["AGENTRAIL_CORS_ORIGIN"] ?? "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-}
-async function readBody(req) {
-  return new Promise((resolve, reject) => {
-    let body = "";
-    req.on("data", (chunk) => {
-      body += chunk.toString();
-    });
-    req.on("end", () => resolve(body));
-    req.on("error", reject);
-  });
-}
-function jsonResponse(res, statusCode, body) {
-  setCommonHeaders(res);
-  const payload = JSON.stringify(body, bigintReplacer);
-  res.writeHead(statusCode);
-  res.end(payload);
-}
-async function handleCall(body) {
-  const request = JSON.parse(body);
-  const requestId = request.id ?? crypto.randomUUID();
-  if (!request.method || typeof request.method !== "string") {
-    return {
-      id: requestId,
-      ok: false,
-      error: { code: "INVALID_REQUEST", message: "Request must include a string method." },
-      meta: { timestamp: new Date().toISOString() }
-    };
-  }
-  const resolvedMethod = METHOD_ALIASES[request.method] ?? request.method;
-  const handler = methodHandlers[resolvedMethod];
-  if (!handler) {
-    return {
-      id: requestId,
-      ok: false,
-      error: { code: "METHOD_NOT_FOUND", message: `Unsupported method: ${request.method}` },
-      meta: { timestamp: new Date().toISOString() }
-    };
-  }
-  try {
-    const response = await handler(request.params);
-    response.id = requestId;
-    return response;
-  } catch (error) {
-    const normalized = asError(error);
-    return {
-      id: requestId,
-      ok: false,
-      error: {
-        code: normalized.code,
-        message: normalized.message,
-        data: normalized.data,
-        advice: getErrorAdvice(normalized)
-      },
-      meta: { timestamp: new Date().toISOString() }
-    };
-  }
-}
-function createHttpServer(port = 4000) {
-  const server = createServer(async (req, res) => {
-    const ip = getClientIp(req);
-    const url = req.url ?? "/";
-    const method = req.method ?? "GET";
-    const startMs = Date.now();
-    if (method === "OPTIONS") {
-      setCommonHeaders(res);
-      res.writeHead(204);
-      res.end();
-      return;
-    }
-    if (!checkRateLimit(ip)) {
-      jsonResponse(res, 429, { ok: false, error: { code: "RATE_LIMITED", message: "Too many requests. Retry after 60s." } });
-      return;
-    }
-    try {
-      if (method === "GET" && url === "/health") {
-        jsonResponse(res, 200, { ok: true, status: "healthy", version: "0.2.0", timestamp: new Date().toISOString() });
-        return;
-      }
-      if (method === "GET" && url === "/manifest") {
-        jsonResponse(res, 200, getLlmManifest());
-        return;
-      }
-      if (method === "GET" && url.startsWith("/schema/")) {
-        const methodName = decodeURIComponent(url.slice("/schema/".length));
-        const schema = getMethodSchema(METHOD_ALIASES[methodName] ?? methodName);
-        if (!schema) {
-          jsonResponse(res, 404, { ok: false, error: { code: "METHOD_NOT_FOUND", message: `No schema for method: ${methodName}` } });
-          return;
-        }
-        jsonResponse(res, 200, { method: methodName, schema });
-        return;
-      }
-      if (method === "POST" && url === "/call") {
-        const body = await readBody(req);
-        if (!body) {
-          jsonResponse(res, 400, { ok: false, error: { code: "EMPTY_BODY", message: "Request body is required." } });
-          return;
-        }
-        const response = await handleCall(body);
-        jsonResponse(res, response.ok ? 200 : 400, response);
-        logger.info("http.call", {
-          ip,
-          method: JSON.parse(body).method ?? "unknown",
-          ok: response.ok,
-          durationMs: Date.now() - startMs
-        });
-        return;
-      }
-      jsonResponse(res, 404, { ok: false, error: { code: "NOT_FOUND", message: `No route: ${method} ${url}` } });
-    } catch (error) {
-      logger.error("http.unhandled", { ip, url, error: error instanceof Error ? error.message : String(error) });
-      jsonResponse(res, 500, { ok: false, error: { code: "INTERNAL_ERROR", message: "Internal server error." } });
-    }
-  });
-  server.listen(port, () => {
-    logger.info("http.server.start", { port });
-    process.stderr.write(JSON.stringify({ ts: new Date().toISOString(), level: "info", msg: "AgentRail HTTP server started", port }) + `
-`);
-  });
-  return server;
-}
-
-// src/index.ts
-var METHOD_ALIASES2 = {
-  registry: "registry.lookup",
-  lookup: "registry.lookup",
-  registryAdd: "registry.add",
-  tokenBalance: "token.balance",
-  positions: "aave.positions",
-  aavePositions: "aave.positions",
-  compoundPositions: "compound.positions",
-  quote: "uniswap.quote",
-  uniswapQuote: "uniswap.quote",
-  plan: "action.plan",
-  inspect: "contract.inspect",
-  functions: "contract.functions",
-  describe: "contract.describe",
-  read: "contract.read",
-  batch: "batch.read",
-  batchRead: "batch.read",
-  simulate: "contract.simulate",
-  build: "tx.build",
-  send: "tx.send",
-  decode: "receipt.decode",
-  decodeReceipt: "receipt.decode"
-};
-function printUsage() {
-  console.error("Usage: agentrail call <method> --json '<payload>'");
-  console.error("   or: agentrail schema <method>");
-  console.error("   or: agentrail --llms");
-  console.error("   or: agentrail serve");
-  console.error("   or: agentrail http [--port 4000]");
-  console.error("   alias: acp");
-}
-function parseArgs(argv) {
-  const [, , command, method, ...rest] = argv;
-  if (command !== "call" || !method) {
-    throw new Error("Invalid command");
-  }
-  const jsonFlagIndex = rest.findIndex((item) => item === "--json");
-  if (jsonFlagIndex === -1 || !rest[jsonFlagIndex + 1]) {
-    throw new Error("Missing --json payload");
-  }
-  return {
-    method,
-    payload: JSON.parse(rest[jsonFlagIndex + 1])
-  };
-}
-async function main() {
-  const command = process.argv[2];
-  if (command === "--llms") {
-    console.log(JSON.stringify(getLlmManifest(), null, 2));
-    return;
-  }
-  if (command === "schema") {
-    const method = process.argv[3];
-    if (!method) {
-      throw new Error("schema requires a method name.");
-    }
-    console.log(JSON.stringify({
-      method,
-      aliasResolvedMethod: METHOD_ALIASES2[method] ?? method,
-      schema: getMethodSchema(METHOD_ALIASES2[method] ?? method)
-    }, null, 2));
-    return;
-  }
-  if (command === "serve") {
-    await serve();
-    return;
-  }
-  if (command === "http") {
-    const portFlag = process.argv.indexOf("--port");
-    const portEnv = process.env["AGENTRAIL_HTTP_PORT"];
-    const port = portFlag !== -1 && process.argv[portFlag + 1] ? parseInt(process.argv[portFlag + 1], 10) : portEnv ? parseInt(portEnv, 10) : 4000;
-    createHttpServer(port);
-    await new Promise(() => {});
-    return;
-  }
-  try {
-    const { method, payload } = parseArgs(process.argv);
-    currentRequestOutputPaths = undefined;
-    currentRequestOutputView = undefined;
-    currentRequestOutputLimit = undefined;
-    const response = await executeRequest({
-      id: crypto.randomUUID(),
-      method,
-      params: payload
-    });
-    console.log(JSON.stringify(filterResponse(response), bigintReplacer, 2));
-  } catch (error) {
-    const response = buildErrorResponse(crypto.randomUUID(), error);
-    console.log(JSON.stringify(filterResponse(response), bigintReplacer, 2));
-    process.exitCode = 1;
-  }
-}
-async function executeRequest(request) {
-  currentRequestOutputPaths = request.output?.paths;
-  currentRequestOutputView = request.output?.view;
-  currentRequestOutputLimit = request.output?.limit;
-  if (request.method === "rpc.discover") {
-    return {
-      id: request.id ?? crypto.randomUUID(),
-      ok: true,
-      result: {
-        name: "AgentRail",
-        version: "0.1.0",
-        transport: "stdio-jsonl",
-        methods: Object.keys(methodHandlers),
-        aliases: METHOD_ALIASES2,
-        capabilities: {
-          abiResolution: ["user-supplied", "abi-path", "sourcify", "explorer", "built-in-standards"],
-          chains: ["local", "bnb", "ethereum", "base", "arbitrum", "optimism", "polygon"],
-          outputViews: ["summary-only", "highlights-only", "non-zero-only"]
-        },
-        requestHints: {
-          minimalFunctionCall: {
-            note: "For many calls you can omit abi and pass function plus returns/stateMutability.",
-            example: {
-              method: "read",
-              params: {
-                chain: "bnb",
-                address: "0xYourContract",
-                function: "balanceOf(address)",
-                args: ["0xYourWallet"],
-                returns: ["uint256"]
-              }
-            }
-          },
-          txSimulation: {
-            example: {
-              method: "simulate",
-              params: {
-                chain: "bnb",
-                address: "0xYourContract",
-                function: "transfer(address,uint256)",
-                args: ["0xRecipient", "1000000000000000000"],
-                caller: "0xYourWallet",
-                stateMutability: "nonpayable",
-                policy: { allowWrites: true, simulationRequired: true }
-              }
-            }
-          },
-          batchRead: {
-            example: {
-              method: "batch",
-              params: {
-                items: [
-                  {
-                    chain: "bnb",
-                    address: "0xTokenA",
-                    function: "balanceOf(address)",
-                    args: ["0xYourWallet"],
-                    returns: ["uint256"],
-                    decimals: 18
-                  },
-                  {
-                    chain: "bnb",
-                    address: "0xTokenB",
-                    function: "balanceOf(address)",
-                    args: ["0xYourWallet"],
-                    returns: ["uint256"],
-                    decimals: 6
-                  }
-                ]
-              }
-            }
-          },
-          protocolShortcuts: {
-            examples: [
-              {
-                method: "lookup",
-                params: { chain: "bnb", protocol: "aave", symbol: "WBNB" }
-              },
-              {
-                method: "tokenBalance",
-                params: { chain: "bnb", token: "0xToken", owner: "0xWallet" }
-              },
-              {
-                method: "positions",
-                params: { chain: "bnb", owner: "0xWallet" }
-              },
-              {
-                method: "plan",
-                params: { chain: "bnb", goal: "read aave supply positions", owner: "0xWallet" }
-              }
-            ]
-          }
-        }
-      },
-      meta: {
-        timestamp: new Date().toISOString()
-      }
-    };
-  }
-  const resolvedMethod = METHOD_ALIASES2[request.method] ?? request.method;
-  const handler = methodHandlers[resolvedMethod];
-  if (!handler) {
-    throw new Error(`Unsupported method: ${request.method}`);
-  }
-  const response = await handler(request.params);
-  response.id = request.id ?? crypto.randomUUID();
-  return response;
-}
-function buildErrorResponse(id, error) {
-  const normalized = asError(error);
-  return {
-    id,
-    ok: false,
-    error: {
-      code: normalized.code,
-      message: normalized.message,
-      data: normalized.data,
-      advice: getErrorAdvice(normalized)
-    },
-    meta: {
-      timestamp: new Date().toISOString()
-    }
-  };
-}
-async function serve() {
-  const rl = createInterface({
-    input: process.stdin,
-    crlfDelay: Infinity
-  });
-  for await (const line of rl) {
-    const trimmed = line.trim();
-    if (!trimmed) {
-      continue;
-    }
-    let requestId = crypto.randomUUID();
-    try {
-      const request = JSON.parse(trimmed);
-      requestId = request.id ?? requestId;
-      if (!request.method || typeof request.method !== "string") {
-        throw new Error("Request must include a string method.");
-      }
-      const response = await executeRequest({
-        id: requestId,
-        method: request.method,
-        params: request.params ?? {},
-        output: request.output
-      });
-      process.stdout.write(`${JSON.stringify(filterResponse(response), bigintReplacer)}
-`);
-    } catch (error) {
-      const response = buildErrorResponse(requestId, error);
-      process.stdout.write(`${JSON.stringify(filterResponse(response), bigintReplacer)}
-`);
-    }
-  }
-}
-function filterResponse(response) {
-  const viewed = applyOutputView(response, currentRequestOutputView, currentRequestOutputLimit);
-  const cliFilter = process.argv.includes("--filter-output") ? process.argv[process.argv.indexOf("--filter-output") + 1] : undefined;
-  const requestFilter = currentRequestOutputPaths;
-  const paths = requestFilter ?? (cliFilter ? cliFilter.split(",").map((path) => path.trim()).filter(Boolean) : undefined);
-  if (!paths || paths.length === 0) {
-    return viewed;
-  }
-  const filtered = {};
-  for (const path of paths) {
-    const value = getPathValue(viewed, path);
-    if (value !== undefined) {
-      filtered[path] = value;
-    }
-  }
-  return {
-    id: viewed.id,
-    ok: viewed.ok,
-    result: filtered,
-    error: viewed.error,
-    meta: viewed.meta
-  };
-}
-function applyOutputView(response, view, limit) {
-  if (!view) {
-    return response;
-  }
-  const result = typeof response.result === "object" && response.result ? { ...response.result } : {};
-  if (view === "summary-only") {
-    return {
-      ...response,
-      result: {
-        summary: getPathValue(response, "result.summary") ?? null
-      }
-    };
-  }
-  if (view === "highlights-only") {
-    const highlights = getPathValue(response, "result.highlights");
-    const sliced = Array.isArray(highlights) && typeof limit === "number" ? highlights.slice(0, limit) : highlights;
-    return {
-      ...response,
-      result: {
-        summary: getPathValue(response, "result.summary") ?? null,
-        highlights: sliced ?? []
-      }
-    };
-  }
-  if (view === "non-zero-only") {
-    const positions = getPathValue(response, "result.nonZeroPositions");
-    const sliced = Array.isArray(positions) && typeof limit === "number" ? positions.slice(0, limit) : positions;
-    return {
-      ...response,
-      result: {
-        summary: getPathValue(response, "result.summary") ?? null,
-        nonZeroPositions: sliced ?? []
-      }
-    };
-  }
-  return {
-    ...response,
-    result
-  };
-}
-var currentRequestOutputPaths;
-var currentRequestOutputView;
-var currentRequestOutputLimit;
-function getPathValue(source, path) {
-  const segments = path.split(".").filter(Boolean);
-  let current = source;
-  for (const segment of segments) {
-    if (!current || typeof current !== "object" || !(segment in current)) {
-      return;
-    }
-    current = current[segment];
-  }
-  return current;
-}
-if (__require.main == __require.module) {
-  if (!["serve", "--llms", "schema", "http"].includes(process.argv[2] ?? "") && process.argv.length < 5) {
-    printUsage();
-    process.exit(1);
-  }
-  await main();
-}

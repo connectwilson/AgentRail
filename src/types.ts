@@ -112,7 +112,10 @@ export type RegistryLookupParams = {
   category?: "token" | "protocol" | "market" | "contract";
   symbol?: string;
   name?: string;
+  /** Free-text search — also triggers on-chain ERC20 probe if looks like an address */
   query?: string;
+  /** Explicit address — triggers on-chain ERC20 probe if not found in registry */
+  address?: string;
 };
 
 export type TokenBalanceParams = {
@@ -143,4 +146,38 @@ export type ActionPlanParams = {
   owner?: string;
   asset?: string;
   amount?: string;
+};
+
+export type CompoundPositionsParams = {
+  chain: SupportedChain;
+  owner: string;
+  /** Optional: explicit Compound V3 market (Comet) addresses to query */
+  markets?: Array<{
+    address: string;
+    baseToken: string;
+    baseTokenDecimals: number;
+  }>;
+};
+
+export type UniswapQuoteParams = {
+  chain: SupportedChain;
+  tokenIn: string;
+  tokenOut: string;
+  amountIn: string;
+  /** Fee tier in bps: 100 = 0.01%, 500 = 0.05%, 3000 = 0.3%, 10000 = 1% */
+  feeTier?: 100 | 500 | 3000 | 10000;
+  /** Override QuoterV2 address */
+  quoterAddress?: string;
+};
+
+export type RegistryAddParams = {
+  entries: Array<{
+    chain: SupportedChain;
+    protocol: string;
+    category: "token" | "protocol" | "market" | "contract";
+    name: string;
+    symbol?: string;
+    address?: string;
+    metadata?: Record<string, unknown>;
+  }>;
 };

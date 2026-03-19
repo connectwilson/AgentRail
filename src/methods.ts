@@ -7,6 +7,9 @@ import type {
   BatchReadParams,
   ActionPlanParams,
   AavePositionsParams,
+  CompoundPositionsParams,
+  UniswapQuoteParams,
+  RegistryAddParams,
   ContractFunctionParams,
   ContractParams,
   FunctionStateMutability,
@@ -23,7 +26,7 @@ import { requireAbi, resolveAbi } from "./abi";
 import { AcpError, getErrorAdvice } from "./errors";
 import { getChainConfig } from "./config";
 import { assertWriteAllowed, mergePolicy } from "./policy";
-import { getAaveMarketEntries, lookupRegistry } from "./registry";
+import { addRegistryEntries, getAaveMarketEntries, getCompoundMarkets, lookupRegistry } from "./registry";
 import { ERC165_IDS, STANDARD_ABIS } from "./standards";
 import {
   bigintReplacer,
@@ -40,6 +43,10 @@ import {
   summarizeFunctionRisk
 } from "./utils";
 import { buildCalldata, getBytecode, getPublicClient, getWalletClient } from "./rpc";
+import { nonceManager } from "./nonce";
+import { logger } from "./logger";
+import { findTokensBySymbol, findTokensByName, tokenListEntryToHint } from "./token-list";
+import { findProtocols, llamaProtocolToHint } from "./defi-llama";
 
 const EIP1967_IMPLEMENTATION_SLOT =
   "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc";
@@ -452,9 +459,100 @@ export async function registryLookup(
 ): Promise<ResponseEnvelope<Record<string, unknown>>> {
   const entries = lookupRegistry(params);
   const bestMatch = entries[0] ?? null;
+
+  // ── On-chain fallback (address probe) ────────────────────────────────────────
+  // Triggered when:
+  //   a) an explicit address was provided but not found in the registry, OR
+  //   b) a free-text query looks like an address and returned no hits
+  let onChainHint: Record<string, unknown> | null = null;
+  const addressLike = (params.address ?? params.query)?.match(/^0x[0-9a-fA-F]{40}$/i);
+  const addressNotInRegistry = !!addressLike && (
+    entries.length === 0 ||
+    !entries.some((e) => e.address?.toLowerCase() === addressLike[0].toLowerCase())
+  );
+  if (addressNotInRegistry && params.chain) {
+    const candidate = addressLike[0];
+    try {
+      const client = getPublicClient(params.chain);
+      const probeAbi = STANDARD_ABIS.ERC20;
+      const [symbol, name, decimals] = await Promise.all([
+        client.readContract({ address: candidate as Address, abi: probeAbi, functionName: "symbol", args: [] }).catch(() => null) as Promise<string | null>,
+        client.readContract({ address: candidate as Address, abi: probeAbi, functionName: "name", args: [] }).catch(() => null) as Promise<string | null>,
+        client.readContract({ address: candidate as Address, abi: probeAbi, functionName: "decimals", args: [] }).catch(() => null) as Promise<number | null>
+      ]);
+      if (symbol || name) {
+        onChainHint = {
+          address: candidate,
+          symbol: symbol ?? null,
+          name: name ?? null,
+          decimals: decimals ?? null,
+          source: "onchain-probe",
+          note: "Not in registry but responded to ERC20 probes. Call registry.add to register permanently."
+        };
+      }
+    } catch { /* chain unavailable */ }
+  }
+
+  // ── Token list fallback (symbol / name queries) ───────────────────────────────
+  let tokenListHints: Record<string, unknown>[] = [];
+  if (entries.length === 0 && !onChainHint) {
+    const sym = params.symbol;
+    const qry = params.query;
+    if (sym) {
+      const found = await findTokensBySymbol(sym, params.chain).catch(() => []);
+      tokenListHints = found.slice(0, 5).map(tokenListEntryToHint);
+    } else if (qry && !/^0x/.test(qry)) {
+      // Free-text: try as symbol first, then name
+      const bySymbol = await findTokensBySymbol(qry, params.chain).catch(() => []);
+      const byName = bySymbol.length === 0
+        ? await findTokensByName(qry, params.chain).catch(() => [])
+        : [];
+      tokenListHints = [...bySymbol, ...byName].slice(0, 5).map(tokenListEntryToHint);
+    }
+  }
+
+  // ── DeFiLlama fallback (protocol queries) ────────────────────────────────────
+  let llamaHints: Record<string, unknown>[] = [];
+  if (entries.length === 0 && !onChainHint && tokenListHints.length === 0) {
+    const protocolQuery = params.protocol ?? params.query;
+    if (protocolQuery && !/^0x/.test(protocolQuery)) {
+      const found = await findProtocols(protocolQuery, params.chain).catch(() => []);
+      llamaHints = found.slice(0, 3).map((p) => llamaProtocolToHint(p, params.chain));
+    }
+  }
+
+  // ── Actionable suggestions ───────────────────────────────────────────────────
+  const suggestions: string[] = [];
+  if (entries.length === 0) {
+    if (onChainHint) {
+      suggestions.push(`Call registry.add with chain="${params.chain}", address="${addressLike?.[0]}" to register this contract.`);
+    } else if (tokenListHints.length > 0) {
+      suggestions.push(`Found ${tokenListHints.length} match(es) in Uniswap token list — see tokenListHints.`);
+      suggestions.push("Call registry.add with the address from tokenListHints to register permanently.");
+    } else if (llamaHints.length > 0) {
+      suggestions.push(`Found ${llamaHints.length} protocol(s) on DeFiLlama — see llamaHints for contract URLs.`);
+      suggestions.push("Find the specific contract address on DeFiLlama, then call registry.add to register it.");
+    } else {
+      suggestions.push("Try a free-text query param for broader matching.");
+      suggestions.push("If you have the contract address, call contract.inspect to identify it automatically.");
+      suggestions.push("Use registry.add to register any contract address manually.");
+      if (params.symbol) {
+        suggestions.push(`Set AGENTRAIL_REGISTRY_FILE to a JSON file containing the ${params.symbol} token entry.`);
+      }
+    }
+  }
+
+  // ── Build summary ─────────────────────────────────────────────────────────────
   const summary = bestMatch
     ? `Found ${entries.length} registry match${entries.length === 1 ? "" : "es"}; best match is ${bestMatch.name}${bestMatch.address ? ` at ${bestMatch.address}` : ""}.`
-    : "No registry matches found for the query.";
+    : onChainHint
+      ? `Not in registry, but on-chain ERC20 probe found: ${String(onChainHint.symbol ?? onChainHint.name)}. Call registry.add to register.`
+      : tokenListHints.length > 0
+        ? `Not in registry, but found ${tokenListHints.length} match(es) in the Uniswap token list. See tokenListHints.`
+        : llamaHints.length > 0
+          ? `Not in registry, but found ${llamaHints.length} match(es) on DeFiLlama. See llamaHints for details.`
+          : "No registry matches found. See suggestions for next steps.";
+
   return {
     id: crypto.randomUUID(),
     ok: true,
@@ -462,6 +560,10 @@ export async function registryLookup(
       entries,
       count: entries.length,
       bestMatch,
+      onChainHint,
+      tokenListHints: tokenListHints.length > 0 ? tokenListHints : undefined,
+      llamaHints: llamaHints.length > 0 ? llamaHints : undefined,
+      suggestions: suggestions.length > 0 ? suggestions : undefined,
       summary
     },
     meta: {
@@ -874,12 +976,17 @@ export async function txSend(
         value: params.value ? BigInt(params.value) : undefined
       });
   const fees = await publicClient.estimateFeesPerGas();
+
+  // Use nonce manager to prevent conflicts on concurrent sends
   const nonce =
     params.nonce !== undefined
       ? params.nonce
-      : await publicClient.getTransactionCount({ address: signerAddress });
+      : await nonceManager.acquire(params.chain, signerAddress, () =>
+          publicClient.getTransactionCount({ address: signerAddress })
+        );
 
   try {
+    logger.info("tx.send.attempt", { chain: params.chain, function: formatFunctionSignature(fn), nonce });
     const hash = await walletClient.writeContract({
       account: signerAddress,
       address,
@@ -896,6 +1003,8 @@ export async function txSend(
         ? BigInt(params.maxPriorityFeePerGas)
         : fees.maxPriorityFeePerGas
     });
+
+    logger.info("tx.send.broadcast", { chain: params.chain, hash, nonce });
 
     return {
       id: crypto.randomUUID(),
@@ -918,6 +1027,13 @@ export async function txSend(
       }
     };
   } catch (error) {
+    // Reset nonce so the next attempt re-fetches from chain
+    nonceManager.reset(params.chain, signerAddress);
+    logger.error("tx.send.failed", {
+      chain: params.chain,
+      nonce,
+      error: error instanceof Error ? error.message : String(error)
+    });
     throw new AcpError("TX_SEND_FAILED", "Failed to sign or broadcast transaction.", {
       reason: error instanceof Error ? error.message : String(error)
     });
@@ -1097,10 +1213,283 @@ export async function actionPlan(
   };
 }
 
+// ─── Compound V3 (Comet) Positions ───────────────────────────────────────────
+
+const COMET_ABI = [
+  {
+    type: "function",
+    name: "balanceOf",
+    stateMutability: "view",
+    inputs: [{ name: "account", type: "address" }],
+    outputs: [{ name: "", type: "uint256" }]
+  },
+  {
+    type: "function",
+    name: "borrowBalanceOf",
+    stateMutability: "view",
+    inputs: [{ name: "account", type: "address" }],
+    outputs: [{ name: "", type: "uint256" }]
+  },
+  {
+    type: "function",
+    name: "getAssetInfoByAddress",
+    stateMutability: "view",
+    inputs: [{ name: "asset", type: "address" }],
+    outputs: [
+      {
+        name: "info",
+        type: "tuple",
+        components: [
+          { name: "offset", type: "uint8" },
+          { name: "asset", type: "address" },
+          { name: "priceFeed", type: "address" },
+          { name: "scale", type: "uint64" },
+          { name: "borrowCollateralFactor", type: "uint64" },
+          { name: "liquidateCollateralFactor", type: "uint64" },
+          { name: "liquidationFactor", type: "uint64" },
+          { name: "supplyCap", type: "uint128" }
+        ]
+      }
+    ]
+  }
+] as const;
+
+export async function compoundPositions(
+  params: CompoundPositionsParams
+): Promise<ResponseEnvelope<Record<string, unknown>>> {
+  const registryMarkets = getCompoundMarkets(params.chain);
+  const markets =
+    params.markets ??
+    registryMarkets.map((entry) => ({
+      address: entry.address ?? "",
+      baseToken: String(entry.metadata?.baseToken ?? "?"),
+      baseTokenDecimals: Number(entry.metadata?.baseTokenDecimals ?? 6)
+    }));
+
+  const client = getPublicClient(params.chain);
+  const owner = normalizeAddress(params.owner);
+
+  const positions = await Promise.all(
+    markets
+      .filter((m) => Boolean(m.address))
+      .map(async (market) => {
+        try {
+          const marketAddress = normalizeAddress(market.address);
+          const [supplyRaw, borrowRaw] = await Promise.all([
+            client.readContract({
+              address: marketAddress,
+              abi: COMET_ABI,
+              functionName: "balanceOf",
+              args: [owner]
+            }),
+            client.readContract({
+              address: marketAddress,
+              abi: COMET_ABI,
+              functionName: "borrowBalanceOf",
+              args: [owner]
+            })
+          ]);
+          const supplyFormatted = formatTokenValue(supplyRaw, market.baseTokenDecimals);
+          const borrowFormatted = formatTokenValue(borrowRaw, market.baseTokenDecimals);
+          const hasSupply = supplyRaw > 0n;
+          const hasBorrow = borrowRaw > 0n;
+          return {
+            market: market.address,
+            baseToken: market.baseToken,
+            supplyRaw: supplyRaw.toString(),
+            supplyFormatted,
+            borrowRaw: borrowRaw.toString(),
+            borrowFormatted,
+            hasSupply,
+            hasBorrow
+          };
+        } catch (error) {
+          return {
+            market: market.address,
+            baseToken: market.baseToken,
+            error: error instanceof Error ? error.message : String(error)
+          };
+        }
+      })
+  );
+
+  const activePositions = positions.filter(
+    (p) => !("error" in p) && (p.hasSupply || p.hasBorrow)
+  );
+  const summary =
+    activePositions.length === 0
+      ? `No active Compound V3 positions found for ${params.owner} across ${positions.length} markets on ${params.chain}.`
+      : `Found ${activePositions.length} active Compound V3 position${activePositions.length === 1 ? "" : "s"} on ${params.chain}: ${activePositions.map((p) => `${p.baseToken}(supply=${p.supplyFormatted ?? p.supplyRaw},borrow=${p.borrowFormatted ?? p.borrowRaw})`).join(", ")}.`;
+
+  return {
+    id: crypto.randomUUID(),
+    ok: true,
+    result: {
+      owner: params.owner,
+      protocol: "compound",
+      version: "v3",
+      trackedMarketsCount: positions.length,
+      activePositionsCount: activePositions.length,
+      summary,
+      positions,
+      activePositions
+    },
+    meta: {
+      chain: params.chain,
+      chainId: getChainConfig(params.chain).chainId,
+      timestamp: new Date().toISOString()
+    }
+  };
+}
+
+// ─── Uniswap V3 Quote ─────────────────────────────────────────────────────────
+
+const QUOTER_V2_ABI = [
+  {
+    type: "function",
+    name: "quoteExactInputSingle",
+    stateMutability: "nonpayable",
+    inputs: [
+      {
+        name: "params",
+        type: "tuple",
+        components: [
+          { name: "tokenIn", type: "address" },
+          { name: "tokenOut", type: "address" },
+          { name: "amountIn", type: "uint256" },
+          { name: "fee", type: "uint24" },
+          { name: "sqrtPriceLimitX96", type: "uint160" }
+        ]
+      }
+    ],
+    outputs: [
+      { name: "amountOut", type: "uint256" },
+      { name: "sqrtPriceX96After", type: "uint160" },
+      { name: "initializedTicksCrossed", type: "uint32" },
+      { name: "gasEstimate", type: "uint256" }
+    ]
+  }
+] as const;
+
+const DEFAULT_QUOTER_ADDRESSES: Partial<Record<string, string>> = {
+  ethereum: "0x61fFE014bA17989E743c5F6cB21bF9697530B21e",
+  arbitrum: "0x61fFE014bA17989E743c5F6cB21bF9697530B21e",
+  optimism: "0x61fFE014bA17989E743c5F6cB21bF9697530B21e",
+  polygon: "0x61fFE014bA17989E743c5F6cB21bF9697530B21e",
+  base: "0x3d4e44Eb1374240CE5F1B871ab261CD16335B76a"
+};
+
+export async function uniswapQuote(
+  params: UniswapQuoteParams
+): Promise<ResponseEnvelope<Record<string, unknown>>> {
+  const quoterAddress =
+    params.quoterAddress ?? DEFAULT_QUOTER_ADDRESSES[params.chain];
+  if (!quoterAddress) {
+    throw new AcpError(
+      "QUOTER_NOT_FOUND",
+      `No Uniswap V3 QuoterV2 address known for chain '${params.chain}'. Provide quoterAddress explicitly.`
+    );
+  }
+
+  const tokenIn = normalizeAddress(params.tokenIn);
+  const tokenOut = normalizeAddress(params.tokenOut);
+  const fee = params.feeTier ?? 3000;
+  const amountIn = BigInt(params.amountIn);
+  const client = getPublicClient(params.chain);
+
+  // Fetch decimals for tokenIn and tokenOut to format the result
+  const [tokenInDecimals, tokenOutDecimals, tokenInSymbol, tokenOutSymbol] = await Promise.all([
+    client.readContract({ address: tokenIn, abi: STANDARD_ABIS.ERC20, functionName: "decimals", args: [] }).catch(() => undefined) as Promise<number | undefined>,
+    client.readContract({ address: tokenOut, abi: STANDARD_ABIS.ERC20, functionName: "decimals", args: [] }).catch(() => undefined) as Promise<number | undefined>,
+    client.readContract({ address: tokenIn, abi: STANDARD_ABIS.ERC20, functionName: "symbol", args: [] }).catch(() => undefined) as Promise<string | undefined>,
+    client.readContract({ address: tokenOut, abi: STANDARD_ABIS.ERC20, functionName: "symbol", args: [] }).catch(() => undefined) as Promise<string | undefined>
+  ]);
+
+  try {
+    const result = await client.simulateContract({
+      address: normalizeAddress(quoterAddress),
+      abi: QUOTER_V2_ABI,
+      functionName: "quoteExactInputSingle",
+      args: [{ tokenIn, tokenOut, amountIn, fee, sqrtPriceLimitX96: 0n }]
+    });
+
+    const amountOut: bigint = result.result[0];
+    const gasEstimate: bigint = result.result[3];
+
+    const amountInFormatted = formatTokenValue(amountIn, tokenInDecimals as number | undefined);
+    const amountOutFormatted = formatTokenValue(amountOut, tokenOutDecimals as number | undefined);
+
+    const summary = `${amountInFormatted ?? amountIn.toString()} ${tokenInSymbol ?? tokenIn} → ${amountOutFormatted ?? amountOut.toString()} ${tokenOutSymbol ?? tokenOut} (fee=${fee / 10000}%)`;
+
+    return {
+      id: crypto.randomUUID(),
+      ok: true,
+      result: {
+        tokenIn,
+        tokenOut,
+        tokenInSymbol: tokenInSymbol ?? null,
+        tokenOutSymbol: tokenOutSymbol ?? null,
+        feeTier: fee,
+        amountIn: amountIn.toString(),
+        amountInFormatted,
+        amountOut: amountOut.toString(),
+        amountOutFormatted,
+        gasEstimate: gasEstimate.toString(),
+        summary,
+        quoterAddress
+      },
+      meta: {
+        chain: params.chain,
+        chainId: getChainConfig(params.chain).chainId,
+        timestamp: new Date().toISOString()
+      }
+    };
+  } catch (error) {
+    throw new AcpError("QUOTE_FAILED", "Uniswap V3 quote simulation failed.", {
+      reason: error instanceof Error ? error.message : String(error),
+      hint: "Check that a pool exists for this token pair and fee tier."
+    });
+  }
+}
+
+// ─── Registry Add ─────────────────────────────────────────────────────────────
+
+export async function registryAdd(
+  params: RegistryAddParams
+): Promise<ResponseEnvelope<Record<string, unknown>>> {
+  if (!Array.isArray(params.entries) || params.entries.length === 0) {
+    throw new AcpError("INVALID_PARAMS", "registry.add requires a non-empty entries array.");
+  }
+  for (const entry of params.entries) {
+    if (!entry.chain || !entry.protocol || !entry.category || !entry.name) {
+      throw new AcpError(
+        "INVALID_ENTRY",
+        "Each registry entry must have chain, protocol, category, and name.",
+        { entry }
+      );
+    }
+  }
+  addRegistryEntries(params.entries);
+  logger.info("registry.add", { count: params.entries.length });
+  return {
+    id: crypto.randomUUID(),
+    ok: true,
+    result: {
+      added: params.entries.length,
+      entries: params.entries,
+      summary: `Added ${params.entries.length} entr${params.entries.length === 1 ? "y" : "ies"} to the registry.`
+    },
+    meta: { timestamp: new Date().toISOString() }
+  };
+}
+
 export const methodHandlers = {
   "registry.lookup": registryLookup,
+  "registry.add": registryAdd,
   "token.balance": tokenBalance,
   "aave.positions": aavePositions,
+  "compound.positions": compoundPositions,
+  "uniswap.quote": uniswapQuote,
   "action.plan": actionPlan,
   "contract.inspect": contractInspect,
   "contract.functions": contractFunctions,

@@ -4,12 +4,18 @@ import { methodHandlers } from "./methods";
 import type { RequestEnvelope, ResponseEnvelope } from "./types";
 import { bigintReplacer } from "./utils";
 import { createInterface } from "node:readline";
+import { createHttpServer } from "./http-server";
 
 const METHOD_ALIASES: Record<string, string> = {
   registry: "registry.lookup",
   lookup: "registry.lookup",
+  registryAdd: "registry.add",
   tokenBalance: "token.balance",
   positions: "aave.positions",
+  aavePositions: "aave.positions",
+  compoundPositions: "compound.positions",
+  quote: "uniswap.quote",
+  uniswapQuote: "uniswap.quote",
   plan: "action.plan",
   inspect: "contract.inspect",
   functions: "contract.functions",
@@ -29,6 +35,7 @@ function printUsage() {
   console.error("   or: agentrail schema <method>");
   console.error("   or: agentrail --llms");
   console.error("   or: agentrail serve");
+  console.error("   or: agentrail http [--port 4000]");
   console.error("   alias: acp");
 }
 
@@ -69,6 +76,20 @@ async function main() {
   }
   if (command === "serve") {
     await serve();
+    return;
+  }
+  if (command === "http") {
+    const portFlag = process.argv.indexOf("--port");
+    const portEnv = process.env["AGENTRAIL_HTTP_PORT"];
+    const port =
+      portFlag !== -1 && process.argv[portFlag + 1]
+        ? parseInt(process.argv[portFlag + 1]!, 10)
+        : portEnv
+          ? parseInt(portEnv, 10)
+          : 4000;
+    createHttpServer(port);
+    // Keep process alive
+    await new Promise(() => {});
     return;
   }
 
@@ -350,7 +371,7 @@ function getPathValue(source: unknown, path: string) {
 }
 
 if (import.meta.main) {
-  if (!["serve", "--llms", "schema"].includes(process.argv[2] ?? "") && process.argv.length < 5) {
+  if (!["serve", "--llms", "schema", "http"].includes(process.argv[2] ?? "") && process.argv.length < 5) {
     printUsage();
     process.exit(1);
   }

@@ -1,13 +1,16 @@
 {
   "name": "agentrail",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": false,
   "description": "Agent-native protocol for reading, simulating, and executing EVM contract interactions with structured JSON.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
   "exports": {
-    ".": "./dist/index.js"
+    ".": "./dist/index.js",
+    "./sdk": "./dist/sdk.js",
+    "./adapters/openai": "./dist/adapters/openai.js",
+    "./adapters/langchain": "./dist/adapters/langchain.js"
   },
   "files": [
     "bin",
@@ -23,7 +26,7 @@
     "acp": "./bin/agentrail.js"
   },
   "scripts": {
-    "build": "mkdir -p dist && ~/.bun/bin/bun build ./src/index.ts --target=node --format=esm --outfile ./dist/index.js && ~/.bun/bin/bun build ./src/live-verify.ts --target=node --format=esm --outfile ./dist/live-verify.js",
+    "build": "mkdir -p dist/adapters && ~/.bun/bin/bun build ./src/index.ts --target=node --format=esm --outfile ./dist/index.js && ~/.bun/bin/bun build ./src/sdk.ts --target=node --format=esm --outfile ./dist/sdk.js && ~/.bun/bin/bun build ./src/adapters/openai.ts --target=node --format=esm --outfile ./dist/adapters/openai.js && ~/.bun/bin/bun build ./src/adapters/langchain.ts --target=node --format=esm --outfile ./dist/adapters/langchain.js && ~/.bun/bin/bun build ./src/live-verify.ts --target=node --format=esm --outfile ./dist/live-verify.js",
     "dev": "bun run src/index.ts",
     "start": "node ./dist/index.js",
     "verify:live": "bun run src/live-verify.ts",
@@ -35,6 +38,20 @@
   "engines": {
     "node": ">=18"
   },
+  "keywords": [
+    "evm",
+    "ethereum",
+    "defi",
+    "agent",
+    "ai",
+    "llm",
+    "aave",
+    "uniswap",
+    "compound",
+    "viem",
+    "onchain",
+    "web3"
+  ],
   "dependencies": {
     "viem": "^2.39.0"
   },

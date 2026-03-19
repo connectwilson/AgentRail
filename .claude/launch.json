@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "AgentRail HTTP Server",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": ["run", "src/index.ts", "http", "--port", "4000"],
+      "port": 4000
+    },
+    {
+      "name": "AgentRail Stdio Server",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": ["run", "src/index.ts", "serve"],
+      "port": 0
+    }
+  ]
+}

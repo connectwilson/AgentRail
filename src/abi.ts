@@ -4,6 +4,7 @@ import { getEnv } from "./env";
 import { AcpError } from "./errors";
 import { STANDARD_ABIS } from "./standards";
 import type { FunctionStateMutability, SupportedChain } from "./types";
+import { abiCache, abiNegativeCache, makeAbiCacheKey } from "./cache";
 
 type AbiResolution =
   | {
@@ -109,6 +110,13 @@ export async function resolveAbi(params: {
 }
 
 async function fetchSourcifyAbi(chain: SupportedChain, address: string): Promise<Abi | null> {
+  const cacheKey = makeAbiCacheKey(chain, address, "sourcify");
+  const negKey = makeAbiCacheKey(chain, address, "sourcify:neg");
+
+  const cached = abiCache.get(cacheKey);
+  if (cached) return JSON.parse(cached) as Abi;
+  if (abiNegativeCache.has(negKey)) return null;
+
   const chainId = getChainConfig(chain).chainId;
   const normalizedAddress = address.toLowerCase();
   const urls = [
@@ -124,6 +132,7 @@ async function fetchSourcifyAbi(chain: SupportedChain, address: string): Promise
       }
       const payload = (await response.json()) as { output?: { abi?: Abi } };
       if (payload.output?.abi && payload.output.abi.length > 0) {
+        abiCache.set(cacheKey, JSON.stringify(payload.output.abi));
         return payload.output.abi;
       }
     } catch {
@@ -131,10 +140,18 @@ async function fetchSourcifyAbi(chain: SupportedChain, address: string): Promise
     }
   }
 
+  abiNegativeCache.set(negKey, true);
   return null;
 }
 
 async function fetchExplorerAbi(chain: SupportedChain, address: string): Promise<Abi | null> {
+  const cacheKey = makeAbiCacheKey(chain, address, "explorer");
+  const negKey = makeAbiCacheKey(chain, address, "explorer:neg");
+
+  const cached = abiCache.get(cacheKey);
+  if (cached) return JSON.parse(cached) as Abi;
+  if (abiNegativeCache.has(negKey)) return null;
+
   const config = EXPLORER_CONFIG[chain];
   if (!config) {
     return null;
@@ -152,14 +169,19 @@ async function fetchExplorerAbi(chain: SupportedChain, address: string): Promise
   try {
     const response = await fetch(url);
     if (!response.ok) {
+      abiNegativeCache.set(negKey, true);
       return null;
     }
     const payload = (await response.json()) as ExplorerAbiResult;
     if (payload.status !== "1" || !payload.result) {
+      abiNegativeCache.set(negKey, true);
       return null;
     }
-    return normalizeAbiJson(payload.result);
+    const abi = normalizeAbiJson(payload.result);
+    abiCache.set(cacheKey, JSON.stringify(abi));
+    return abi;
   } catch {
+    abiNegativeCache.set(negKey, true);
     return null;
   }
 }
