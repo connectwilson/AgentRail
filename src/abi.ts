@@ -69,7 +69,8 @@ export async function resolveAbi(params: {
   loadLocalAbi: (abiPath: string) => Promise<Abi>;
 }): Promise<AbiResolution> {
   if (params.abi) {
-    return { abi: params.abi, source: "user-supplied" };
+    const abi = typeof params.abi === "string" ? (JSON.parse(params.abi) as Abi) : params.abi;
+    return { abi, source: "user-supplied" };
   }
 
   if (params.abiPath) {
