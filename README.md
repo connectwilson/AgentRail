@@ -9,6 +9,7 @@
 The protocol is generic.
 It is designed to work across EVM contracts and DeFi protocols, not just one integration.
 Aave-specific methods in this repo are examples of higher-level adapters built on top of the same core protocol surface.
+Hyperliquid-specific methods extend the same idea to trading-oriented agent workflows like balances, positions, orders, fills, and ledger history.
 
 The goal is simple:
 
@@ -32,6 +33,13 @@ Instead of only offering low-level primitives like `readContract`, it also offer
 
 - `registry.lookup`
 - `token.balance`
+- `hyperliquid.account`
+- `hyperliquid.placeOrder`
+- `hyperliquid.cancelOrder`
+- `hyperliquid.modifyOrder`
+- `hyperliquid.orders`
+- `hyperliquid.trades`
+- `hyperliquid.ledger`
 - `protocol-specific adapters`
 - `action.plan`
 - `receipt.decode`
@@ -107,6 +115,14 @@ Built-in higher-level methods and adapters today:
 
 - `registry.lookup`
 - `token.balance`
+- `hyperliquid.account`
+- `hyperliquid.balances`
+- `hyperliquid.placeOrder`
+- `hyperliquid.cancelOrder`
+- `hyperliquid.modifyOrder`
+- `hyperliquid.orders`
+- `hyperliquid.trades`
+- `hyperliquid.ledger`
 - `aave.positions`
 - `action.plan`
 
@@ -201,6 +217,30 @@ Read a token balance with formatting:
 agentrail call tokenBalance --json '{"chain":"bnb","token":"0x9B00a09492a626678E5A3009982191586C444Df9","owner":"0x5f0599dade40b691caaf156ec7dc6121833d58bb"}'
 ```
 
+Read a Hyperliquid account summary:
+
+```bash
+agentrail call hlAccount --json '{"user":"0xYourHyperliquidUser"}'
+```
+
+Read Hyperliquid fills:
+
+```bash
+agentrail call hlTrades --json '{"user":"0xYourHyperliquidUser","limit":20}'
+```
+
+Prepare a preview-only Hyperliquid order action:
+
+```bash
+agentrail call hlPlaceOrder --json '{"user":"0xYourHyperliquidUser","market":"BTC","side":"buy","size":"0.01","orderType":"market","slippageBps":50}'
+```
+
+Sign a preview-generated Hyperliquid action without sending it:
+
+```bash
+agentrail call hlSignAction --json '{"signingRequest":{"action":{"type":"order","orders":[{"a":0,"b":true,"p":"100","s":"0.1","r":false,"t":{"limit":{"tif":"Ioc"}}}],"grouping":"na"},"nonce":1700000000000},"policy":{"allowWrites":true,"mode":"unsafe"}}'
+```
+
 Simulate an arbitrary DeFi contract call:
 
 ```bash
@@ -222,6 +262,41 @@ One built-in adapter example today is reading Aave supplied positions on BNB:
 ```bash
 agentrail call positions --json '{"chain":"bnb","owner":"0x5f0599dade40b691caaf156ec7dc6121833d58bb"}' --filter-output result.summary,result.highlights
 ```
+
+## Hyperliquid Execution Model
+
+Hyperliquid support is intentionally split into stages:
+
+- `hyperliquid.placeOrder`, `hyperliquid.cancelOrder`, `hyperliquid.modifyOrder`
+  return normalized preview payloads and `signingRequest` objects.
+- `hyperliquid.signAction`
+  signs a preview-generated action with `HYPERLIQUID_PRIVATE_KEY`, but does not send it.
+- `hyperliquid.sendSignedAction`
+  submits a previously signed action to Hyperliquid.
+
+This keeps the default path safer for agents:
+
+1. discover the method with `rpc.discover` or `schema`
+2. build a preview action
+3. inspect the normalized payload and warnings
+4. sign only with explicit unsafe write policy
+5. send only in a separately approved step
+
+Minimal sign/send flow:
+
+```bash
+agentrail call hlPlaceOrder --json '{"user":"0xYourHyperliquidUser","market":"BTC","side":"buy","size":"0.01","orderType":"market","slippageBps":50}'
+```
+
+```bash
+agentrail call hlSignAction --json '{"signingRequest":{"action":{"type":"order","orders":[{"a":0,"b":true,"p":"100","s":"0.1","r":false,"t":{"limit":{"tif":"Ioc"}}}],"grouping":"na"},"nonce":1700000000000},"policy":{"allowWrites":true,"mode":"unsafe"}}'
+```
+
+```bash
+agentrail call hlSendSignedAction --json '{"signedAction":{"action":{"type":"order","orders":[{"a":0,"b":true,"p":"100","s":"0.1","r":false,"t":{"limit":{"tif":"Ioc"}}}],"grouping":"na"},"nonce":1700000000000,"signature":{"r":"0x...","s":"0x...","v":28}},"policy":{"allowWrites":true,"mode":"unsafe"}}'
+```
+
+If you only want safe automation for now, stop after `hlPlaceOrder` or `hlSignAction`.
 
 ## Protocol Mode
 
@@ -273,6 +348,8 @@ Write paths are designed to be more agent-safe than raw SDK usage:
 
 - contract inspection and simulation
 - generic contract reads and token balance queries
+- Hyperliquid account, order, trade, and ledger reads for trading agents
+- Hyperliquid preview-only order/cancel/modify action building for safer execution planning
 - transaction build/send/decode flows
 - protocol address lookup
 - Aave BNB supply position reads as a current built-in adapter example
@@ -295,6 +372,12 @@ Live verification script:
 
 ```bash
 bun run verify:live
+```
+
+Hyperliquid fresh-agent verification:
+
+```bash
+bun run verify:hyperliquid
 ```
 
 Build npm distributable files:

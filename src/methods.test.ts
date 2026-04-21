@@ -2,9 +2,12 @@ import { describe, expect, test, beforeEach } from "bun:test";
 import { encodeAbiParameters, encodeEventTopics, parseAbi } from "viem";
 import { buildMinimalAbiFromSignature, normalizeAbiJson, resolveAbi } from "./abi";
 import { abiCache, abiNegativeCache, makeAbiCacheKey } from "./cache";
+import { getRpcTransportConfig, getRpcUrls } from "./config";
 import { AcpError, asError, getErrorAdvice } from "./errors";
+import { buildHyperliquidL1ActionHash, buildHyperliquidL1TypedData, inferHyperliquidAggressivePrice } from "./hyperliquid";
 import { getLlmManifest, getMethodSchema } from "./manifest";
 import { mergePolicy } from "./policy";
+import { PROTOCOL_NAME, PROTOCOL_SCHEMA_VERSION, PROTOCOL_VERSION, withProtocolMeta } from "./protocol";
 import { REGISTRY, getAaveMarketEntries, getCompoundMarkets, lookupRegistry } from "./registry";
 import {
   bigintReplacer,
@@ -20,6 +23,7 @@ import {
 } from "./utils";
 import type { RequestEnvelope } from "./types";
 import { nonceManager } from "./nonce";
+import { hyperliquidSendSignedAction, hyperliquidSignAction } from "./methods";
 
 // ─── Semantic Helpers ─────────────────────────────────────────────────────────
 
@@ -205,6 +209,31 @@ describe("ABI resolution", () => {
     });
     expect(result.source).toBe("function-signature");
     expect(result.abi).toBeTruthy();
+  });
+
+  test("prefers function-signature mode before network resolution when returns are provided", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = ((() => {
+      throw new Error("fetch should not be called when function-signature mode is explicit");
+    }) as unknown) as typeof fetch;
+
+    try {
+      const result = await resolveAbi({
+        chain: "polygon",
+        address: "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+        functionSignature: "balanceOf(address)",
+        returns: ["uint256"],
+        stateMutability: "view",
+        loadLocalAbi: async () => {
+          throw new Error("should not call");
+        }
+      });
+
+      expect(result.source).toBe("function-signature");
+      expect(result.abi).toBeTruthy();
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });
 
@@ -573,6 +602,12 @@ describe("nonceManager", () => {
 describe("manifest", () => {
   test("getLlmManifest exposes all core methods", () => {
     const manifest = getLlmManifest();
+    expect(manifest.methods["hyperliquid.placeOrder"]).toBeDefined();
+    expect(manifest.methods["hyperliquid.cancelOrder"]).toBeDefined();
+    expect(manifest.methods["hyperliquid.modifyOrder"]).toBeDefined();
+    expect(manifest.methods["hyperliquid.account"]).toBeDefined();
+    expect(manifest.methods["hyperliquid.orders"]).toBeDefined();
+    expect(manifest.methods["hyperliquid.trades"]).toBeDefined();
     expect(manifest.methods["aave.positions"]).toBeDefined();
     expect(manifest.methods["contract.read"]).toBeDefined();
     expect(manifest.methods["tx.send"]).toBeDefined();
@@ -593,6 +628,101 @@ describe("manifest", () => {
     const manifest = getLlmManifest();
     expect(manifest.name).toBe("AgentRail");
     expect(manifest.version).toBeDefined();
+    expect(manifest.adapters).toContain("hyperliquid");
+  });
+});
+
+describe("hyperliquid signing helpers", () => {
+  test("infers aggressive buy price from mid and slippage", () => {
+    expect(inferHyperliquidAggressivePrice({ side: "buy", mid: "100", slippageBps: 50 })).toBe("100.49999999999999");
+  });
+
+  test("builds deterministic l1 action hash", () => {
+    const hash = buildHyperliquidL1ActionHash({
+      action: {
+        type: "order",
+        orders: [{ a: 0, b: true, p: "100", s: "0.1", r: false, t: { limit: { tif: "Ioc" } } }],
+        grouping: "na"
+      },
+      nonce: 1700000000000
+    });
+
+    expect(hash).toMatch(/^0x[0-9a-f]{64}$/);
+  });
+
+  test("builds l1 typed data with expected domain", () => {
+    const typedData = buildHyperliquidL1TypedData(("0x" + "11".repeat(32)) as `0x${string}`, true);
+    expect(typedData.domain.name).toBe("Exchange");
+    expect(typedData.domain.chainId).toBe(1337);
+    expect(typedData.message.source).toBe("a");
+  });
+
+  test("signs a preview-generated action when unsafe policy and signer are configured", async () => {
+    const previousKey = process.env.HYPERLIQUID_PRIVATE_KEY;
+    process.env.HYPERLIQUID_PRIVATE_KEY =
+      "0x59c6995e998f97a5a0044966f094538e2db7f7db0f4d0f7f4d9f1f1c9f6f6f6f";
+
+    try {
+      const response = await hyperliquidSignAction({
+        signingRequest: {
+          action: {
+            type: "order",
+            orders: [{ a: 0, b: true, p: "100", s: "0.1", r: false, t: { limit: { tif: "Ioc" } } }],
+            grouping: "na"
+          },
+          nonce: 1700000000000
+        },
+        policy: {
+          allowWrites: true,
+          mode: "unsafe"
+        }
+      });
+
+      expect(response.ok).toBe(true);
+      expect(response.result?.executionMode).toBe("signed-but-not-sent");
+      expect(response.result?.signature).toBeDefined();
+      expect(response.result?.signedAction).toBeDefined();
+    } finally {
+      if (previousKey === undefined) delete process.env.HYPERLIQUID_PRIVATE_KEY;
+      else process.env.HYPERLIQUID_PRIVATE_KEY = previousKey;
+    }
+  });
+
+  test("sends a signed action to the exchange endpoint", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = ((async () =>
+      ({
+        ok: true,
+        json: async () => ({ status: "ok", response: { type: "order" } })
+      }) as Response) as unknown) as typeof fetch;
+
+    try {
+      const response = await hyperliquidSendSignedAction({
+        signedAction: {
+          action: {
+            type: "cancel",
+            cancels: [{ a: 0, o: 12345 }],
+            grouping: "na"
+          },
+          nonce: 1700000000001,
+          signature: {
+            r: ("0x" + "11".repeat(32)) as `0x${string}`,
+            s: ("0x" + "22".repeat(32)) as `0x${string}`,
+            v: 27
+          }
+        },
+        policy: {
+          allowWrites: true,
+          mode: "unsafe"
+        }
+      });
+
+      expect(response.ok).toBe(true);
+      expect(response.result?.executionMode).toBe("sent");
+      expect(response.result?.response).toEqual({ status: "ok", response: { type: "order" } });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });
 
@@ -631,5 +761,36 @@ describe("request envelope", () => {
       const req: RequestEnvelope = { method: "contract.read", params: { chain } };
       expect(validChains).toContain((req.params as { chain: string }).chain);
     }
+  });
+});
+
+// ─── Protocol Runtime Config ─────────────────────────────────────────────────
+
+describe("protocol runtime config", () => {
+  test("parses comma-separated rpc urls from env", () => {
+    const previous = process.env.BNB_RPC_URL;
+    process.env.BNB_RPC_URL = "https://rpc-1.example, https://rpc-2.example";
+    expect(getRpcUrls("bnb")).toEqual(["https://rpc-1.example", "https://rpc-2.example"]);
+    if (previous === undefined) delete process.env.BNB_RPC_URL;
+    else process.env.BNB_RPC_URL = previous;
+  });
+
+  test("exposes rpc transport defaults", () => {
+    const config = getRpcTransportConfig();
+    expect(config.retryCount).toBeGreaterThanOrEqual(0);
+    expect(config.retryDelay).toBeGreaterThanOrEqual(0);
+    expect(config.timeout).toBeGreaterThan(0);
+  });
+
+  test("attaches protocol metadata to responses", () => {
+    const response = withProtocolMeta({
+      id: "meta-1",
+      ok: true,
+      result: { ok: true },
+      meta: { timestamp: "2026-04-21T00:00:00.000Z" }
+    });
+    expect(response.meta.protocol).toBe(PROTOCOL_NAME);
+    expect(response.meta.protocolVersion).toBe(PROTOCOL_VERSION);
+    expect(response.meta.schemaVersion).toBe(PROTOCOL_SCHEMA_VERSION);
   });
 });

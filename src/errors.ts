@@ -71,6 +71,42 @@ export function getErrorAdvice(error: AcpError): ErrorAdvice {
           "Check balances, allowances, deadlines, and protocol preconditions."
         ]
       };
+    case "RPC_REQUEST_FAILED":
+      return {
+        retryable: true,
+        likelyCauses: [
+          "The downstream RPC endpoint timed out, rejected the request, or was temporarily unavailable."
+        ],
+        suggestedNextActions: [
+          "Retry the request or provide a custom RPC URL for the target chain.",
+          "If the issue persists, set AGENTRAIL_RPC_TIMEOUT_MS, AGENTRAIL_RPC_RETRY_COUNT, or a chain-specific *_RPC_URL."
+        ]
+      };
+    case "HYPERLIQUID_REQUEST_FAILED":
+      return {
+        retryable: true,
+        likelyCauses: [
+          "The Hyperliquid info endpoint timed out, rate limited the request, or returned an error.",
+          "The supplied user address may not be the actual Hyperliquid account address you intended to query."
+        ],
+        suggestedNextActions: [
+          "Retry the request after a short delay.",
+          "Confirm the queried address is the correct Hyperliquid user, subaccount, or vault address.",
+          "Set HYPERLIQUID_API_URL explicitly if you want to use a different upstream endpoint."
+        ]
+      };
+    case "HYPERLIQUID_INVALID_RESPONSE":
+      return {
+        retryable: true,
+        likelyCauses: [
+          "Hyperliquid returned a response shape that this AgentRail version does not fully normalize yet.",
+          "The selected request type may not be available for this account or time range."
+        ],
+        suggestedNextActions: [
+          "Retry the request and inspect the raw field in the response.",
+          "If this keeps happening, open an issue with the request type and returned payload."
+        ]
+      };
     case "TX_SEND_FAILED":
       return {
         retryable: true,
@@ -106,6 +142,12 @@ export function asError(error: unknown): AcpError {
     return error;
   }
   if (error instanceof Error) {
+    if (/hyperliquid/i.test(error.message)) {
+      return new AcpError("HYPERLIQUID_REQUEST_FAILED", error.message);
+    }
+    if (/HTTP request failed|fetch failed|network error|url or port/i.test(error.message)) {
+      return new AcpError("RPC_REQUEST_FAILED", error.message);
+    }
     return new AcpError("INTERNAL_ERROR", error.message);
   }
   return new AcpError("INTERNAL_ERROR", "Unknown error", error);

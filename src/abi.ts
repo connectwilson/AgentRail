@@ -77,6 +77,21 @@ export async function resolveAbi(params: {
     return { abi: await params.loadLocalAbi(params.abiPath), source: "abi-path" };
   }
 
+  const shouldPreferFunctionSignature =
+    Boolean(params.functionSignature) &&
+    (Boolean(params.returns?.length) || Boolean(params.stateMutability));
+
+  if (shouldPreferFunctionSignature) {
+    return {
+      abi: buildMinimalAbiFromSignature({
+        functionSignature: params.functionSignature!,
+        returns: params.returns,
+        stateMutability: params.stateMutability
+      }),
+      source: "function-signature"
+    };
+  }
+
   const sourcifyAbi = await fetchSourcifyAbi(params.chain, params.address);
   if (sourcifyAbi) {
     return { abi: sourcifyAbi, source: "sourcify" };

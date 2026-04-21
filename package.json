@@ -26,11 +26,15 @@
     "acp": "./bin/agentrail.js"
   },
   "scripts": {
-    "build": "mkdir -p dist/adapters && ~/.bun/bin/bun build ./src/index.ts --target=node --format=esm --outfile ./dist/index.js && ~/.bun/bin/bun build ./src/sdk.ts --target=node --format=esm --outfile ./dist/sdk.js && ~/.bun/bin/bun build ./src/adapters/openai.ts --target=node --format=esm --outfile ./dist/adapters/openai.js && ~/.bun/bin/bun build ./src/adapters/langchain.ts --target=node --format=esm --outfile ./dist/adapters/langchain.js && ~/.bun/bin/bun build ./src/live-verify.ts --target=node --format=esm --outfile ./dist/live-verify.js",
+    "build": "mkdir -p dist/adapters && ~/.bun/bin/bun build ./src/index.ts --target=node --format=esm --outfile ./dist/index.js && ~/.bun/bin/bun build ./src/sdk.ts --target=node --format=esm --outfile ./dist/sdk.js && ~/.bun/bin/bun build ./src/adapters/openai.ts --target=node --format=esm --outfile ./dist/adapters/openai.js && ~/.bun/bin/bun build ./src/adapters/langchain.ts --target=node --format=esm --outfile ./dist/adapters/langchain.js && ~/.bun/bin/bun build ./src/live-verify.ts --target=node --format=esm --outfile ./dist/live-verify.js && ~/.bun/bin/bun build ./src/agent-eval.ts --target=node --format=esm --outfile ./dist/agent-eval.js && ~/.bun/bin/bun build ./src/hyperliquid-eval.ts --target=node --format=esm --outfile ./dist/hyperliquid-eval.js",
     "dev": "bun run src/index.ts",
     "start": "node ./dist/index.js",
     "verify:live": "bun run src/live-verify.ts",
     "verify:live:node": "node ./dist/live-verify.js",
+    "verify:agent": "bun run src/agent-eval.ts",
+    "verify:agent:node": "node ./dist/agent-eval.js",
+    "verify:hyperliquid": "bun run src/hyperliquid-eval.ts",
+    "verify:hyperliquid:node": "node ./dist/hyperliquid-eval.js",
     "prepack": "npm run build",
     "test": "bun test",
     "typecheck": "bunx tsc --noEmit -p tsconfig.build.json"
@@ -53,6 +57,7 @@
     "web3"
   ],
   "dependencies": {
+    "@msgpack/msgpack": "^3.1.3",
     "viem": "^2.39.0"
   },
   "devDependencies": {

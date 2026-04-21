@@ -4,6 +4,141 @@ var agentRailTools = [
   {
     type: "function",
     function: {
+      name: "agentrail_hyperliquid_place_order",
+      description: "Build a preview-only Hyperliquid order action. Validates and normalizes an order payload without signing or sending it.",
+      parameters: {
+        type: "object",
+        properties: {
+          user: { type: "string", description: "Hyperliquid user address" },
+          market: { type: "string", description: "Market symbol e.g. BTC or PURR/USDC" },
+          side: { type: "string", description: "buy or sell", enum: ["buy", "sell"] },
+          size: { type: "string", description: "Order size" },
+          orderType: { type: "string", description: "limit or market", enum: ["limit", "market"] },
+          price: { type: "string", description: "Required for limit previews" },
+          tif: { type: "string", description: "Time in force", enum: ["Alo", "Ioc", "Gtc"] },
+          reduceOnly: { type: "string", description: "Optional reduce-only flag as true/false" }
+        },
+        required: ["user", "market", "side", "size"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "agentrail_hyperliquid_cancel_order",
+      description: "Build a preview-only Hyperliquid cancel action for an order id or client order id.",
+      parameters: {
+        type: "object",
+        properties: {
+          user: { type: "string", description: "Hyperliquid user address" },
+          market: { type: "string", description: "Market symbol e.g. BTC or PURR/USDC" },
+          orderId: { type: "string", description: "Numeric order id" },
+          clientOrderId: { type: "string", description: "Client order id" }
+        },
+        required: ["user", "market"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "agentrail_hyperliquid_modify_order",
+      description: "Build a preview-only Hyperliquid modify action for an existing order.",
+      parameters: {
+        type: "object",
+        properties: {
+          user: { type: "string", description: "Hyperliquid user address" },
+          market: { type: "string", description: "Market symbol e.g. BTC or PURR/USDC" },
+          orderId: { type: "string", description: "Numeric order id" },
+          clientOrderId: { type: "string", description: "Client order id" },
+          side: { type: "string", description: "buy or sell", enum: ["buy", "sell"] },
+          size: { type: "string", description: "Replacement order size" },
+          orderType: { type: "string", description: "limit or market", enum: ["limit", "market"] },
+          price: { type: "string", description: "Required for limit previews" }
+        },
+        required: ["user", "market", "side", "size"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "agentrail_hyperliquid_sign_action",
+      description: "Sign a Hyperliquid action using HYPERLIQUID_PRIVATE_KEY. Requires explicit unsafe write policy and does not send.",
+      parameters: {
+        type: "object",
+        properties: {
+          signingRequest: { type: "string", description: "JSON object returned by a Hyperliquid preview method" }
+        },
+        required: ["signingRequest"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "agentrail_hyperliquid_send_signed_action",
+      description: "Send an already signed Hyperliquid action to the exchange endpoint. Requires explicit unsafe write policy.",
+      parameters: {
+        type: "object",
+        properties: {
+          signedAction: { type: "string", description: "JSON object returned by hyperliquid.signAction" }
+        },
+        required: ["signedAction"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "agentrail_hyperliquid_account",
+      description: "Read a Hyperliquid account overview including balances, active perp positions, and account summary.",
+      parameters: {
+        type: "object",
+        properties: {
+          user: { type: "string", description: "Hyperliquid user address" },
+          dex: { type: "string", description: "Optional dex or subaccount identifier" }
+        },
+        required: ["user"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "agentrail_hyperliquid_orders",
+      description: "Read open and historical Hyperliquid orders for a user.",
+      parameters: {
+        type: "object",
+        properties: {
+          user: { type: "string", description: "Hyperliquid user address" },
+          dex: { type: "string", description: "Optional dex or subaccount identifier" },
+          limit: { type: "number", description: "Optional maximum number of orders per category" }
+        },
+        required: ["user"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "agentrail_hyperliquid_trades",
+      description: "Read recent Hyperliquid fills/trades for a user.",
+      parameters: {
+        type: "object",
+        properties: {
+          user: { type: "string", description: "Hyperliquid user address" },
+          startTime: { type: "number", description: "Optional unix ms start time" },
+          endTime: { type: "number", description: "Optional unix ms end time" },
+          limit: { type: "number", description: "Optional maximum number of fills" }
+        },
+        required: ["user"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
       name: "agentrail_registry_lookup",
       description: "Look up known protocol, market, token, or contract addresses from the AgentRail registry.",
       parameters: {
@@ -168,9 +303,43 @@ async function handleAgentRailToolCall(rail, toolCall) {
       args["returns"] = JSON.parse(args["returns"]);
     } catch {}
   }
+  if (typeof args["signingRequest"] === "string") {
+    try {
+      args["signingRequest"] = JSON.parse(args["signingRequest"]);
+    } catch {}
+  }
+  if (typeof args["signedAction"] === "string") {
+    try {
+      args["signedAction"] = JSON.parse(args["signedAction"]);
+    } catch {}
+  }
   let result;
   try {
     switch (toolCall.function.name) {
+      case "agentrail_hyperliquid_sign_action":
+        result = await rail.hyperliquidSignAction(Object.assign({}, args, { policy: { allowWrites: true, mode: "unsafe", simulationRequired: false } }));
+        break;
+      case "agentrail_hyperliquid_send_signed_action":
+        result = await rail.hyperliquidSendSignedAction(Object.assign({}, args, { policy: { allowWrites: true, mode: "unsafe", simulationRequired: false } }));
+        break;
+      case "agentrail_hyperliquid_place_order":
+        result = await rail.hyperliquidPlaceOrder(args);
+        break;
+      case "agentrail_hyperliquid_cancel_order":
+        result = await rail.hyperliquidCancelOrder(args);
+        break;
+      case "agentrail_hyperliquid_modify_order":
+        result = await rail.hyperliquidModifyOrder(args);
+        break;
+      case "agentrail_hyperliquid_account":
+        result = await rail.hyperliquidAccount(args);
+        break;
+      case "agentrail_hyperliquid_orders":
+        result = await rail.hyperliquidOrders(args);
+        break;
+      case "agentrail_hyperliquid_trades":
+        result = await rail.hyperliquidTrades(args);
+        break;
       case "agentrail_registry_lookup":
         result = await rail.registryLookup(args);
         break;

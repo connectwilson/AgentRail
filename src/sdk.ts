@@ -30,9 +30,21 @@ import {
   receiptDecode,
   registryLookup,
   tokenBalance,
+  hyperliquidAccount,
+  hyperliquidBalances,
+  hyperliquidCancelOrder,
+  hyperliquidModifyOrder,
+  hyperliquidOrders,
+  hyperliquidPlaceOrder,
+  hyperliquidSendSignedAction,
+  hyperliquidSignAction,
+  hyperliquidTrades,
+  hyperliquidLedger,
   aavePositions,
   compoundPositions,
   uniswapQuote,
+  uniswapPositions,
+  walletPortfolio,
   actionPlan
 } from "./methods";
 import type {
@@ -46,9 +58,21 @@ import type {
   ReceiptDecodeParams,
   RegistryLookupParams,
   TokenBalanceParams,
+  HyperliquidAccountParams,
+  HyperliquidBalancesParams,
+  HyperliquidCancelOrderParams,
+  HyperliquidOrdersParams,
+  HyperliquidModifyOrderParams,
+  HyperliquidPlaceOrderParams,
+  HyperliquidSendSignedActionParams,
+  HyperliquidSignActionParams,
+  HyperliquidTradesParams,
+  HyperliquidLedgerParams,
   AavePositionsParams,
   CompoundPositionsParams,
   UniswapQuoteParams,
+  UniswapPositionsParams,
+  WalletPortfolioParams,
   ActionPlanParams,
   ResponseEnvelope
 } from "./types";
@@ -65,9 +89,21 @@ export type {
   ReceiptDecodeParams,
   RegistryLookupParams,
   TokenBalanceParams,
+  HyperliquidAccountParams,
+  HyperliquidBalancesParams,
+  HyperliquidCancelOrderParams,
+  HyperliquidOrdersParams,
+  HyperliquidModifyOrderParams,
+  HyperliquidPlaceOrderParams,
+  HyperliquidSendSignedActionParams,
+  HyperliquidSignActionParams,
+  HyperliquidTradesParams,
+  HyperliquidLedgerParams,
   AavePositionsParams,
   CompoundPositionsParams,
   UniswapQuoteParams,
+  UniswapPositionsParams,
+  WalletPortfolioParams,
   ActionPlanParams
 };
 
@@ -127,6 +163,56 @@ export class AgentRail {
     return tokenBalance(params);
   }
 
+  /** Read a Hyperliquid account overview */
+  hyperliquidAccount(params: HyperliquidAccountParams): Promise<ResponseEnvelope<Record<string, unknown>>> {
+    return hyperliquidAccount(params);
+  }
+
+  /** Read Hyperliquid balances and active positions */
+  hyperliquidBalances(params: HyperliquidBalancesParams): Promise<ResponseEnvelope<Record<string, unknown>>> {
+    return hyperliquidBalances(params);
+  }
+
+  /** Build a preview-only Hyperliquid place order action */
+  hyperliquidPlaceOrder(params: HyperliquidPlaceOrderParams): Promise<ResponseEnvelope<Record<string, unknown>>> {
+    return hyperliquidPlaceOrder(params);
+  }
+
+  /** Build a preview-only Hyperliquid cancel action */
+  hyperliquidCancelOrder(params: HyperliquidCancelOrderParams): Promise<ResponseEnvelope<Record<string, unknown>>> {
+    return hyperliquidCancelOrder(params);
+  }
+
+  /** Build a preview-only Hyperliquid modify action */
+  hyperliquidModifyOrder(params: HyperliquidModifyOrderParams): Promise<ResponseEnvelope<Record<string, unknown>>> {
+    return hyperliquidModifyOrder(params);
+  }
+
+  /** Sign a Hyperliquid action using the configured Hyperliquid signing key */
+  hyperliquidSignAction(params: HyperliquidSignActionParams): Promise<ResponseEnvelope<Record<string, unknown>>> {
+    return hyperliquidSignAction(params);
+  }
+
+  /** Send a previously signed Hyperliquid action to the exchange endpoint */
+  hyperliquidSendSignedAction(params: HyperliquidSendSignedActionParams): Promise<ResponseEnvelope<Record<string, unknown>>> {
+    return hyperliquidSendSignedAction(params);
+  }
+
+  /** Read Hyperliquid open and historical orders */
+  hyperliquidOrders(params: HyperliquidOrdersParams): Promise<ResponseEnvelope<Record<string, unknown>>> {
+    return hyperliquidOrders(params);
+  }
+
+  /** Read Hyperliquid fills/trades */
+  hyperliquidTrades(params: HyperliquidTradesParams): Promise<ResponseEnvelope<Record<string, unknown>>> {
+    return hyperliquidTrades(params);
+  }
+
+  /** Read Hyperliquid funding and non-funding ledger activity */
+  hyperliquidLedger(params: HyperliquidLedgerParams): Promise<ResponseEnvelope<Record<string, unknown>>> {
+    return hyperliquidLedger(params);
+  }
+
   /** Read Aave V3 supplied positions for an owner */
   aavePositions(params: AavePositionsParams): Promise<ResponseEnvelope<Record<string, unknown>>> {
     return aavePositions(params);
@@ -140,6 +226,16 @@ export class AgentRail {
   /** Get a Uniswap V3 swap quote */
   uniswapQuote(params: UniswapQuoteParams): Promise<ResponseEnvelope<Record<string, unknown>>> {
     return uniswapQuote(params);
+  }
+
+  /** Read all Uniswap V3 LP NFT positions for an owner (pair, fee tier, liquidity, uncollected fees) */
+  uniswapPositions(params: UniswapPositionsParams): Promise<ResponseEnvelope<Record<string, unknown>>> {
+    return uniswapPositions(params);
+  }
+
+  /** Scan a wallet's full asset portfolio: native balance, ERC20s, Aave, Compound, Uniswap LP */
+  walletPortfolio(params: WalletPortfolioParams): Promise<ResponseEnvelope<Record<string, unknown>>> {
+    return walletPortfolio(params);
   }
 
   /** Generate a step-by-step plan for a natural language onchain goal */
@@ -164,9 +260,21 @@ export {
   receiptDecode,
   registryLookup,
   tokenBalance,
+  hyperliquidAccount,
+  hyperliquidBalances,
+  hyperliquidCancelOrder,
+  hyperliquidModifyOrder,
+  hyperliquidOrders,
+  hyperliquidPlaceOrder,
+  hyperliquidSendSignedAction,
+  hyperliquidSignAction,
+  hyperliquidTrades,
+  hyperliquidLedger,
   aavePositions,
   compoundPositions,
   uniswapQuote,
+  uniswapPositions,
+  walletPortfolio,
   actionPlan
 };
 

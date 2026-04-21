@@ -5,17 +5,33 @@ import type { RequestEnvelope, ResponseEnvelope } from "./types";
 import { bigintReplacer } from "./utils";
 import { createInterface } from "node:readline";
 import { createHttpServer } from "./http-server";
+import { PROTOCOL_NAME, PROTOCOL_SCHEMA_VERSION, PROTOCOL_VERSION, withProtocolMeta } from "./protocol";
+import { getRpcTransportConfig } from "./config";
 
 const METHOD_ALIASES: Record<string, string> = {
   registry: "registry.lookup",
   lookup: "registry.lookup",
   registryAdd: "registry.add",
   tokenBalance: "token.balance",
+  hlAccount: "hyperliquid.account",
+  hlBalances: "hyperliquid.balances",
+  hlOrders: "hyperliquid.orders",
+  hlTrades: "hyperliquid.trades",
+  hlLedger: "hyperliquid.ledger",
+  hlPlaceOrder: "hyperliquid.placeOrder",
+  hlCancelOrder: "hyperliquid.cancelOrder",
+  hlModifyOrder: "hyperliquid.modifyOrder",
+  hlSignAction: "hyperliquid.signAction",
+  hlSendSignedAction: "hyperliquid.sendSignedAction",
   positions: "aave.positions",
   aavePositions: "aave.positions",
   compoundPositions: "compound.positions",
   quote: "uniswap.quote",
   uniswapQuote: "uniswap.quote",
+  uniswapPositions: "uniswap.positions",
+  lpPositions: "uniswap.positions",
+  portfolio: "wallet.portfolio",
+  walletPortfolio: "wallet.portfolio",
   plan: "action.plan",
   inspect: "contract.inspect",
   functions: "contract.functions",
@@ -115,20 +131,62 @@ async function executeRequest(request: RequestEnvelope): Promise<ResponseEnvelop
   currentRequestOutputPaths = request.output?.paths;
   currentRequestOutputView = request.output?.view;
   currentRequestOutputLimit = request.output?.limit;
-  if (request.method === "rpc.discover") {
-    return {
+  if (request.method === "rpc.manifest") {
+    return withProtocolMeta({
+      id: request.id ?? crypto.randomUUID(),
+      ok: true,
+      result: getLlmManifest(),
+      meta: {
+        timestamp: new Date().toISOString()
+      }
+    });
+  }
+  if (request.method === "rpc.schema") {
+    const method =
+      request.params && typeof (request.params as Record<string, unknown>).method === "string"
+        ? ((request.params as Record<string, unknown>).method as string)
+        : undefined;
+    if (!method) {
+      throw new Error("rpc.schema requires params.method.");
+    }
+    return withProtocolMeta({
       id: request.id ?? crypto.randomUUID(),
       ok: true,
       result: {
-        name: "AgentRail",
-        version: "0.1.0",
+        method,
+        aliasResolvedMethod: METHOD_ALIASES[method] ?? method,
+        schema: getMethodSchema(METHOD_ALIASES[method] ?? method)
+      },
+      meta: {
+        timestamp: new Date().toISOString()
+      }
+    });
+  }
+  if (request.method === "rpc.discover") {
+    return withProtocolMeta({
+      id: request.id ?? crypto.randomUUID(),
+      ok: true,
+      result: {
+        name: PROTOCOL_NAME,
+        version: PROTOCOL_VERSION,
+        schemaVersion: PROTOCOL_SCHEMA_VERSION,
         transport: "stdio-jsonl",
-        methods: Object.keys(methodHandlers),
+        methods: ["rpc.discover", "rpc.manifest", "rpc.schema", ...Object.keys(methodHandlers)],
         aliases: METHOD_ALIASES,
         capabilities: {
           abiResolution: ["user-supplied", "abi-path", "sourcify", "explorer", "built-in-standards"],
           chains: ["local", "bnb", "ethereum", "base", "arbitrum", "optimism", "polygon"],
-          outputViews: ["summary-only", "highlights-only", "non-zero-only"]
+          adapters: ["hyperliquid"],
+          outputViews: ["summary-only", "highlights-only", "non-zero-only"],
+          execution: {
+            batchRead: ["multicall-when-possible", "single-read-fallback"]
+          },
+          rpc: {
+            fallback: true,
+            timeoutMs: getRpcTransportConfig().timeout,
+            retryCount: getRpcTransportConfig().retryCount,
+            retryDelayMs: getRpcTransportConfig().retryDelay
+          }
         },
         requestHints: {
           minimalFunctionCall: {
@@ -186,6 +244,14 @@ async function executeRequest(request: RequestEnvelope): Promise<ResponseEnvelop
           protocolShortcuts: {
             examples: [
               {
+                method: "hlAccount",
+                params: { user: "0xHyperliquidUser" }
+              },
+              {
+                method: "hlTrades",
+                params: { user: "0xHyperliquidUser", limit: 20 }
+              },
+              {
                 method: "lookup",
                 params: { chain: "bnb", protocol: "aave", symbol: "WBNB" }
               },
@@ -198,6 +264,14 @@ async function executeRequest(request: RequestEnvelope): Promise<ResponseEnvelop
                 params: { chain: "bnb", owner: "0xWallet" }
               },
               {
+                method: "uniswapPositions",
+                params: { chain: "ethereum", owner: "0xWallet" }
+              },
+              {
+                method: "portfolio",
+                params: { chain: "ethereum", owner: "0xWallet" }
+              },
+              {
                 method: "plan",
                 params: { chain: "bnb", goal: "read aave supply positions", owner: "0xWallet" }
               }
@@ -208,7 +282,7 @@ async function executeRequest(request: RequestEnvelope): Promise<ResponseEnvelop
       meta: {
         timestamp: new Date().toISOString()
       }
-    };
+    });
   }
 
   const resolvedMethod = METHOD_ALIASES[request.method] ?? request.method;
@@ -219,12 +293,12 @@ async function executeRequest(request: RequestEnvelope): Promise<ResponseEnvelop
 
   const response = (await handler(request.params as never)) as ResponseEnvelope;
   response.id = request.id ?? crypto.randomUUID();
-  return response;
+  return withProtocolMeta(response);
 }
 
 function buildErrorResponse(id: string, error: unknown): ResponseEnvelope {
   const normalized = asError(error);
-  return {
+  return withProtocolMeta({
     id,
     ok: false,
     error: {
@@ -236,7 +310,7 @@ function buildErrorResponse(id: string, error: unknown): ResponseEnvelope {
     meta: {
       timestamp: new Date().toISOString()
     }
-  };
+  });
 }
 
 async function serve() {

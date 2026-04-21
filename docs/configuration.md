@@ -19,6 +19,18 @@ Supported custom RPC environment variables:
 - `OPTIMISM_RPC_URL`
 - `POLYGON_RPC_URL`
 
+## Hyperliquid Adapter
+
+For Hyperliquid adapter methods:
+
+- `HYPERLIQUID_API_URL`
+- `HYPERLIQUID_EXCHANGE_URL`
+- `HYPERLIQUID_PRIVATE_KEY`
+
+Optional timeout tuning:
+
+- `AGENTRAIL_HYPERLIQUID_TIMEOUT_MS`
+
 ## Signer Configuration
 
 For transaction sending:

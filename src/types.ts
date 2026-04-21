@@ -55,6 +55,10 @@ export type ResponseEnvelope<TResult = unknown> = {
   };
   warnings?: string[];
   meta: {
+    protocol?: string;
+    protocolVersion?: string;
+    schemaVersion?: string;
+    adapter?: string;
     chain?: SupportedChain;
     chainId?: number;
     timestamp: string;
@@ -180,4 +184,129 @@ export type RegistryAddParams = {
     address?: string;
     metadata?: Record<string, unknown>;
   }>;
+};
+
+export type UniswapPositionsParams = {
+  chain: SupportedChain;
+  owner: string;
+  /** Override Uniswap V3 NonfungiblePositionManager address */
+  positionManagerAddress?: string;
+};
+
+export type WalletPortfolioParams = {
+  chain: SupportedChain;
+  owner: string;
+  /**
+   * Which protocol adapters to run. Defaults to all: ["aave", "compound", "uniswap", "tokens"].
+   * "tokens" scans registered ERC20 balances on the chain.
+   */
+  protocols?: Array<"aave" | "compound" | "uniswap" | "tokens">;
+};
+
+export type HyperliquidAccountParams = {
+  user: string;
+  dex?: string;
+  includePerps?: boolean;
+  includeSpot?: boolean;
+  includePortfolio?: boolean;
+  includeRole?: boolean;
+  includeVaults?: boolean;
+};
+
+export type HyperliquidBalancesParams = {
+  user: string;
+  dex?: string;
+};
+
+export type HyperliquidOrdersParams = {
+  user: string;
+  dex?: string;
+  includeOpen?: boolean;
+  includeHistorical?: boolean;
+  limit?: number;
+};
+
+export type HyperliquidTradesParams = {
+  user: string;
+  startTime?: number;
+  endTime?: number;
+  aggregateByTime?: boolean;
+  limit?: number;
+};
+
+export type HyperliquidLedgerParams = {
+  user: string;
+  startTime?: number;
+  endTime?: number;
+  includeFunding?: boolean;
+  includeNonFunding?: boolean;
+  limit?: number;
+};
+
+export type HyperliquidPlaceOrderParams = {
+  user: string;
+  market: string;
+  side: "buy" | "sell";
+  size: string;
+  orderType?: "limit" | "market";
+  price?: string;
+  tif?: "Alo" | "Ioc" | "Gtc";
+  reduceOnly?: boolean;
+  dex?: string;
+  vaultAddress?: string;
+  expiresAfter?: number;
+  slippageBps?: number;
+  clientOrderId?: string;
+};
+
+export type HyperliquidCancelOrderParams = {
+  user: string;
+  market: string;
+  orderId?: number | string;
+  clientOrderId?: string;
+  vaultAddress?: string;
+  expiresAfter?: number;
+};
+
+export type HyperliquidModifyOrderParams = {
+  user: string;
+  market: string;
+  orderId?: number | string;
+  clientOrderId?: string;
+  side: "buy" | "sell";
+  size: string;
+  orderType?: "limit" | "market";
+  price?: string;
+  tif?: "Alo" | "Ioc" | "Gtc";
+  reduceOnly?: boolean;
+  vaultAddress?: string;
+  expiresAfter?: number;
+  slippageBps?: number;
+  newClientOrderId?: string;
+};
+
+export type HyperliquidSignActionParams = {
+  user?: string;
+  signingRequest: {
+    action: Record<string, unknown>;
+    nonce: number;
+    vaultAddress?: string | null;
+    expiresAfter?: number | null;
+  };
+  policy?: Policy;
+};
+
+export type HyperliquidSendSignedActionParams = {
+  signedAction: {
+    action: Record<string, unknown>;
+    nonce: number;
+    signature: {
+      r: string;
+      s: string;
+      v: number;
+    };
+    vaultAddress?: string | null;
+    expiresAfter?: number | null;
+  };
+  policy?: Policy;
 };

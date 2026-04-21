@@ -6,6 +6,123 @@ function createAgentRailLangChainTools(rail) {
   }
   return [
     {
+      name: "agentrail_hyperliquid_sign_action",
+      description: "Sign a Hyperliquid action using HYPERLIQUID_PRIVATE_KEY. Requires explicit unsafe write policy and does not send.",
+      schema: {
+        type: "object",
+        properties: {
+          signingRequest: { type: "object", description: "Signing request object returned by a Hyperliquid preview method" }
+        },
+        required: ["signingRequest"]
+      },
+      func: async (input) => stringify(await rail.hyperliquidSignAction(Object.assign({}, input, { policy: { allowWrites: true, mode: "unsafe", simulationRequired: false } })))
+    },
+    {
+      name: "agentrail_hyperliquid_send_signed_action",
+      description: "Send an already-signed Hyperliquid action to the exchange endpoint. Requires explicit unsafe write policy.",
+      schema: {
+        type: "object",
+        properties: {
+          signedAction: { type: "object", description: "Signed action object returned by hyperliquidSignAction" }
+        },
+        required: ["signedAction"]
+      },
+      func: async (input) => stringify(await rail.hyperliquidSendSignedAction(Object.assign({}, input, { policy: { allowWrites: true, mode: "unsafe", simulationRequired: false } })))
+    },
+    {
+      name: "agentrail_hyperliquid_place_order",
+      description: "Build a preview-only Hyperliquid order action. Validates and normalizes the order without signing or sending it.",
+      schema: {
+        type: "object",
+        properties: {
+          user: { type: "string", description: "Hyperliquid user address" },
+          market: { type: "string", description: "Market symbol e.g. BTC or PURR/USDC" },
+          side: { type: "string", description: "buy or sell" },
+          size: { type: "string", description: "Order size" },
+          orderType: { type: "string", description: "limit or market" },
+          price: { type: "string", description: "Required for limit previews" }
+        },
+        required: ["user", "market", "side", "size"]
+      },
+      func: async (input) => stringify(await rail.hyperliquidPlaceOrder(input))
+    },
+    {
+      name: "agentrail_hyperliquid_cancel_order",
+      description: "Build a preview-only Hyperliquid cancel action for an order id or client order id.",
+      schema: {
+        type: "object",
+        properties: {
+          user: { type: "string", description: "Hyperliquid user address" },
+          market: { type: "string", description: "Market symbol e.g. BTC or PURR/USDC" },
+          orderId: { type: "string", description: "Numeric order id" },
+          clientOrderId: { type: "string", description: "Client order id" }
+        },
+        required: ["user", "market"]
+      },
+      func: async (input) => stringify(await rail.hyperliquidCancelOrder(input))
+    },
+    {
+      name: "agentrail_hyperliquid_modify_order",
+      description: "Build a preview-only Hyperliquid modify action for an existing order.",
+      schema: {
+        type: "object",
+        properties: {
+          user: { type: "string", description: "Hyperliquid user address" },
+          market: { type: "string", description: "Market symbol e.g. BTC or PURR/USDC" },
+          orderId: { type: "string", description: "Numeric order id" },
+          clientOrderId: { type: "string", description: "Client order id" },
+          side: { type: "string", description: "buy or sell" },
+          size: { type: "string", description: "Replacement order size" },
+          orderType: { type: "string", description: "limit or market" },
+          price: { type: "string", description: "Required for limit previews" }
+        },
+        required: ["user", "market", "side", "size"]
+      },
+      func: async (input) => stringify(await rail.hyperliquidModifyOrder(input))
+    },
+    {
+      name: "agentrail_hyperliquid_account",
+      description: "Read a Hyperliquid account overview including balances, active perp positions, and account summary.",
+      schema: {
+        type: "object",
+        properties: {
+          user: { type: "string", description: "Hyperliquid user address" },
+          dex: { type: "string", description: "Optional dex or subaccount identifier" }
+        },
+        required: ["user"]
+      },
+      func: async (input) => stringify(await rail.hyperliquidAccount(input))
+    },
+    {
+      name: "agentrail_hyperliquid_orders",
+      description: "Read open and historical Hyperliquid orders for a user.",
+      schema: {
+        type: "object",
+        properties: {
+          user: { type: "string", description: "Hyperliquid user address" },
+          dex: { type: "string", description: "Optional dex or subaccount identifier" },
+          limit: { type: "number", description: "Optional maximum number of orders per category" }
+        },
+        required: ["user"]
+      },
+      func: async (input) => stringify(await rail.hyperliquidOrders(input))
+    },
+    {
+      name: "agentrail_hyperliquid_trades",
+      description: "Read recent Hyperliquid fills/trades for a user.",
+      schema: {
+        type: "object",
+        properties: {
+          user: { type: "string", description: "Hyperliquid user address" },
+          startTime: { type: "number", description: "Optional unix ms start time" },
+          endTime: { type: "number", description: "Optional unix ms end time" },
+          limit: { type: "number", description: "Optional maximum fills" }
+        },
+        required: ["user"]
+      },
+      func: async (input) => stringify(await rail.hyperliquidTrades(input))
+    },
+    {
       name: "agentrail_registry_lookup",
       description: "Look up known DeFi protocol, token, or contract addresses by chain, protocol name, or symbol.",
       schema: {

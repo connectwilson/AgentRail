@@ -3,6 +3,7 @@ import {
   createWalletClient,
   defineChain,
   encodeFunctionData,
+  fallback,
   http,
   publicActions,
   type Abi,
@@ -18,7 +19,7 @@ import {
   polygon
 } from "viem/chains";
 import type { SupportedChain } from "./types";
-import { getRpcUrl } from "./config";
+import { getRpcTransportConfig, getRpcUrls } from "./config";
 import { AcpError } from "./errors";
 import { getEnv } from "./env";
 
@@ -49,9 +50,20 @@ const chainMap = {
 >;
 
 export function getPublicClient(chain: SupportedChain) {
+  const rpcUrls = getRpcUrls(chain);
+  const transportConfig = getRpcTransportConfig();
   return createPublicClient({
     chain: chainMap[chain],
-    transport: http(getRpcUrl(chain))
+    transport:
+      rpcUrls.length === 1
+        ? http(rpcUrls[0], transportConfig)
+        : fallback(
+            rpcUrls.map((url) => http(url, transportConfig)),
+            {
+              retryCount: 0,
+              rank: false
+            }
+          )
   }).extend(publicActions);
 }
 
@@ -67,10 +79,21 @@ export function getWalletClient(chain: SupportedChain, privateKey?: `0x${string}
     );
   }
 
+  const rpcUrls = getRpcUrls(chain);
+  const transportConfig = getRpcTransportConfig();
   return createWalletClient({
     account: privateKeyToAccount(key),
     chain: chainMap[chain],
-    transport: http(getRpcUrl(chain))
+    transport:
+      rpcUrls.length === 1
+        ? http(rpcUrls[0], transportConfig)
+        : fallback(
+            rpcUrls.map((url) => http(url, transportConfig)),
+            {
+              retryCount: 0,
+              rank: false
+            }
+          )
   });
 }
 

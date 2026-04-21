@@ -28,11 +28,22 @@ import type { RequestEnvelope, ResponseEnvelope } from "./types";
 // Inline executeRequest to avoid circular imports — import the handler map directly
 import { methodHandlers } from "./methods";
 import { asError, getErrorAdvice } from "./errors";
+import { PROTOCOL_NAME, PROTOCOL_SCHEMA_VERSION, PROTOCOL_VERSION, withProtocolMeta } from "./protocol";
 
 const METHOD_ALIASES: Record<string, string> = {
   registry: "registry.lookup",
   lookup: "registry.lookup",
   tokenBalance: "token.balance",
+  hlAccount: "hyperliquid.account",
+  hlBalances: "hyperliquid.balances",
+  hlOrders: "hyperliquid.orders",
+  hlTrades: "hyperliquid.trades",
+  hlLedger: "hyperliquid.ledger",
+  hlPlaceOrder: "hyperliquid.placeOrder",
+  hlCancelOrder: "hyperliquid.cancelOrder",
+  hlModifyOrder: "hyperliquid.modifyOrder",
+  hlSignAction: "hyperliquid.signAction",
+  hlSendSignedAction: "hyperliquid.sendSignedAction",
   positions: "aave.positions",
   aavePositions: "aave.positions",
   compoundPositions: "compound.positions",
@@ -107,32 +118,32 @@ async function handleCall(
   const requestId = request.id ?? crypto.randomUUID();
 
   if (!request.method || typeof request.method !== "string") {
-    return {
+    return withProtocolMeta({
       id: requestId,
       ok: false,
       error: { code: "INVALID_REQUEST", message: "Request must include a string method." },
       meta: { timestamp: new Date().toISOString() }
-    };
+    });
   }
 
   const resolvedMethod = METHOD_ALIASES[request.method] ?? request.method;
   const handler = methodHandlers[resolvedMethod as keyof typeof methodHandlers];
   if (!handler) {
-    return {
+    return withProtocolMeta({
       id: requestId,
       ok: false,
       error: { code: "METHOD_NOT_FOUND", message: `Unsupported method: ${request.method}` },
       meta: { timestamp: new Date().toISOString() }
-    };
+    });
   }
 
   try {
     const response = (await handler(request.params as never)) as ResponseEnvelope;
     response.id = requestId;
-    return response;
+    return withProtocolMeta(response);
   } catch (error) {
     const normalized = asError(error);
-    return {
+    return withProtocolMeta({
       id: requestId,
       ok: false,
       error: {
@@ -142,7 +153,7 @@ async function handleCall(
         advice: getErrorAdvice(normalized)
       },
       meta: { timestamp: new Date().toISOString() }
-    };
+    });
   }
 }
 
@@ -170,7 +181,14 @@ export function createHttpServer(port = 4000) {
     try {
       // GET /health
       if (method === "GET" && url === "/health") {
-        jsonResponse(res, 200, { ok: true, status: "healthy", version: "0.2.0", timestamp: new Date().toISOString() });
+        jsonResponse(res, 200, {
+          ok: true,
+          status: "healthy",
+          protocol: PROTOCOL_NAME,
+          version: PROTOCOL_VERSION,
+          schemaVersion: PROTOCOL_SCHEMA_VERSION,
+          timestamp: new Date().toISOString()
+        });
         return;
       }
 
